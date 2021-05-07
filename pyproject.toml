@@ -1,6 +1,7 @@
 [build-system]
 requires = [
     "setuptools>=42",
-    "wheel"
+    "wheel",
+    "dacite>=1.6.0"
 ]
 build-backend = "setuptools.build_meta"
