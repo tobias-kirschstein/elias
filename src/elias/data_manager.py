@@ -17,6 +17,13 @@ StatisticsType = TypeVar('StatisticsType')
 
 
 class BaseDataManager(Generic[ConfigType, StatisticsType]):
+    """
+    A DataManager provides access to dataset files stored on a file system.
+    It is assumed that all dataset files reside in the same root folder.
+    Optionally, the DataManager can process additional information of the dataset stored in JSON files:
+        - ``config.json``: Contains all information necessary to reproduce the creation of the dataset
+        - ``stats.json``: Contains statistics of the dataset that can only be obtained by a potentially costly iteration over the full dataset
+    """
 
     def __init__(self, data_location: str,
                  shuffle: bool = False,
@@ -24,6 +31,29 @@ class BaseDataManager(Generic[ConfigType, StatisticsType]):
                  dataset_slice_suffix: str = None,
                  config_cls: Type[Config] = Config,
                  statistics_cls: Type[Config] = Config):
+        """
+        Parameters
+        ----------
+            data_location: str
+                Root folder of stored data. This is where ``config.json`` and ``stats.json`` will be loaded from.
+            shuffle: bool, default False
+                Only relevant when using :meth:`_lazy_load_slices`. If shuffle is set to ``True`` dataset files will
+                be loaded in random order
+            dataset_slice_prefix: str, optional
+                Only relevant when using :meth:`_lazy_load_slices`. Dataset files are assumed to have a numbering and
+                their file names follow this pattern: "``dataset_slice_prefix`` n ``dataset_slice_suffix``". Specifying
+                `dataset_slice_prefix` and `dataset_slice_suffix` is necessary for :meth:`_lazy_load_slices` to be
+                used and indicates how the dataset files are named
+            dataset_slice_suffix: str, optional
+                See explanation of `dataset_slice_prefix`
+            config_cls: Type[Config], default Config
+                The class of the dataset configuration (stored in ``config.json``) which is assumed to be a dataclass
+                subclassing :class:`elias.config.Config`. :meth:`save_config` and :meth:`load_config` take/retrieve the
+                dataset configuration as a Python object of this class.
+            statistics_cls: Type[Config], default Config
+                Same explanation as for `config_cls` just for the dataset statistics ``stats.json``
+        """
+
         assert Path(data_location).is_dir(), f"Specified data location '{data_location}' is not a directory"
 
         self._data_location = data_location
@@ -36,7 +66,7 @@ class BaseDataManager(Generic[ConfigType, StatisticsType]):
     @staticmethod
     def to_batches(generator: Iterable, batch_size: int, lazy: bool = False) -> Generator:
         """
-        Lazyly evaluated batch-wise loading of the code snippets
+        Lazyly evaluated batch-wise loading of the code snippets.
         """
 
         if batch_size == 1:
@@ -77,6 +107,7 @@ class BaseDataManager(Generic[ConfigType, StatisticsType]):
         """
         Private generator for providing paths to dataset slices one by one. Implements shuffling of dataset slices.
         """
+
         assert self._dataset_slice_prefix is not None and self._dataset_slice_suffix is not None, \
             "_lazy_load_files() can only be used if prefix and suffix are defined"
 
@@ -89,7 +120,7 @@ class BaseDataManager(Generic[ConfigType, StatisticsType]):
         if not file_ids:
             raise Exception(f"No dataset files found in {self._data_location}. Is the path correct?")
 
-        # Converts the file list into a generator
+        # Converts the path list into a generator
         for file_id in file_ids:
             yield self.get_dataset_slice_path(file_id)
 
@@ -146,7 +177,7 @@ class BufferedDataManager(BaseDataManager):
         self.load_buffer = Queue(size_load_buffer)
         self.save_buffer = Queue(size_save_buffer)
         self.load_worker = None  # Will be initialized upon obtaining an iterator
-        self.save_worker = None  # Will be initialized when the first file needs to be saved
+        self.save_worker = None  # Will be initialized when the first path needs to be saved
         self.stop_event = Event()
 
     def __iter__(self):

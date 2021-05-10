@@ -1,3 +1,10 @@
+"""
+The io module contains various utility methods for loading/saving Python objects/dicts in various formats.
+Currently, there is support for the most frequent data storing formats:
+    - JSON (+gzip)
+    - pickled Python objects (+gzip)
+"""
+
 import gzip
 import json
 import pickle
@@ -5,53 +12,173 @@ import pickle
 from elias.fs import ensure_file_ending, create_directories
 
 
-def save_zipped_json(obj: object, file: str):
-    file = ensure_file_ending(file, "json.gz")
-    create_directories(file)
-    with gzip.open(file, 'wb') as f:
+def save_zipped_json(obj: dict, path: str, suffix: str = 'json.gz'):
+    """
+    Parses the given Python dict into json, zips it and stores it at the specified location.
+    Per default, the path will have a suffix 'json.gz'.
+
+    Parameters
+    ----------
+        obj: dict
+            The JSON (represented as python dict) to be zipped and stored
+        path: str
+            Where to store the file
+        suffix: str, default 'json.gz'
+            File name suffix
+    """
+
+    path = ensure_file_ending(path, suffix)
+    create_directories(path)
+    with gzip.open(path, 'wb') as f:
         json.dump(obj, f)
 
 
-def load_zipped_json(file: str) -> dict:
-    file = ensure_file_ending(file, "json.gz")
-    with gzip.open(file, 'rb') as f:
+def load_zipped_json(path: str, suffix: str = 'json.gz') -> dict:
+    """
+    Loads the specified compressed JSON file from `path` and extracts it.
+    Per default, the path name is assumed to have a suffix 'json.gz'.
+
+    Parameters
+    ----------
+        path: str
+            Path to the zipped JSON to load
+        suffix: str, default 'json.gz'
+            File name suffix
+
+    Returns
+    -------
+        The contents of the zipped JSON as a Python dict
+    """
+
+    path = ensure_file_ending(path, suffix)
+    with gzip.open(path, 'rb') as f:
         return json.load(f)
 
 
-def save_zipped_object(obj, file):
-    file = ensure_file_ending(file, "p.gz")
-    create_directories(file)
-    with gzip.open(file, 'wb') as f:
+def save_zipped_object(obj: object, path: str, suffix: str = 'p.gz'):
+    """
+    Pickles, zips and stores an arbitrary python object at the specified `path`.
+    Per default, the file will have a suffix 'json.gz'.
+
+    Parameters
+    ----------
+        obj: object
+            The Python object to be zipped and stored
+        path:
+            Where to store the file
+        suffix: str, default 'p.gz'
+            File name suffix
+    """
+
+    path = ensure_file_ending(path, suffix)
+    create_directories(path)
+    with gzip.open(path, 'wb') as f:
         pickle.dump(obj, f)
 
 
-def load_zipped_object(file) -> object:
-    file = ensure_file_ending(file, "p.gz")
-    with gzip.open(file, 'rb') as f:
+def load_zipped_object(path: str, suffix: str = 'p.gz') -> object:
+    """
+    Loads zipped and pickled Python object stored at `path`.
+    Per default, the file name is assumed to have a suffix 'p.gz'.
+
+    Parameters
+    ----------
+        path: str
+            Path to the zipped Python object that should be loaded
+        suffix: str, default 'p.gz'
+            File name suffix
+
+    Returns
+    -------
+        The un-pickled Python object
+    """
+
+    path = ensure_file_ending(path, suffix)
+    with gzip.open(path, 'rb') as f:
         return pickle.load(f)
 
 
-def save_pickled(obj, file):
-    file = ensure_file_ending(file, "p")
-    create_directories(file)
-    with open(f"{file}", 'wb') as f:
+def save_pickled(obj: object, path: str, suffix: str = 'p'):
+    """
+    Pickles and stores an arbitrary python object at the specified `path`.
+    Per default, the file will have a suffix 'p'.
+
+    Parameters
+    ----------
+        obj: object
+            The Python object to be pickled and stored
+        path: str
+            Where to store the file
+        suffix: str, default 'p'
+            File name suffix
+    """
+
+    path = ensure_file_ending(path, suffix)
+    create_directories(path)
+    with open(f"{path}", 'wb') as f:
         pickle.dump(obj, f)
 
 
-def load_pickled(file) -> object:
-    file = ensure_file_ending(file, "p")
-    with open(file, 'rb') as f:
+def load_pickled(path, suffix: str = 'p') -> object:
+    """
+    Loads a pickled Python object stored at the specified `path`.
+    Per default, the file name is assumed to have a suffix 'p'.
+
+    Parameters
+    ----------
+        path: str
+            Path to the pickled Python object that should be loaded
+        suffix: str, default 'p'
+            File name suffix
+
+    Returns
+    -------
+        The un-pickled Python object
+    """
+
+    path = ensure_file_ending(path, suffix)
+    with open(path, 'rb') as f:
         return pickle.load(f)
 
 
-def save_json(obj: dict, file):
-    file = ensure_file_ending(file, "json")
-    create_directories(file)
-    with open(file, 'w') as f:
+def save_json(obj: dict, path: str, suffix: str = 'json'):
+    """
+    Stores the given Python dict in JSON format at `path`.
+    Per default, the file will have a suffix 'json'.
+
+    Parameters
+    ----------
+        obj: dict
+            The Python dict to store
+        path: str
+            Where to store the file
+        suffix:
+            File name suffix
+    """
+
+    path = ensure_file_ending(path, suffix)
+    create_directories(path)
+    with open(path, 'w') as f:
         json.dump(obj, f, indent=4)
 
 
-def load_json(file) -> dict:
-    file = ensure_file_ending(file, "json")
-    with open(file, 'r') as f:
+def load_json(path, suffix: str = 'json') -> dict:
+    """
+    Loads and parses the given JSON file and returns it as a Python dict.
+    Per default, the file name is assumed to have a suffix 'json'.
+
+    Parameters
+    ----------
+        path: str
+            Path to the JSON file
+        suffix: str, default 'json'
+            File name suffix
+
+    Returns
+    -------
+        Contents of the JSON file as Python dict
+    """
+
+    path = ensure_file_ending(path, suffix)
+    with open(path, 'r') as f:
         return json.load(f)

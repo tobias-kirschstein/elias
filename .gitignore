@@ -8,4 +8,4 @@ _pycache__
 
 # build artifacts
 elias.egg-info
-
+/docs/build/

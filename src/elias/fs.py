@@ -20,13 +20,13 @@ def list_file_numbering(directory: str, prefix: str, suffix: str = None) -> List
 
     Parameters
     ----------
-        directory: where to search for file numberings
+        directory: where to search for path numberings
         prefix: prefix of files to be considered
         suffix: (optional) suffix of files to be considered
 
     Returns
     -------
-        a list of numbers (without leading zeros) that appear in the matched file names in between `prefix` and `suffix`.
+        a list of numbers (without leading zeros) that appear in the matched path names in between `prefix` and `suffix`.
     """
     if suffix is None or suffix.count('.') == 1 and suffix[0] == '.':
         suffix = ""
