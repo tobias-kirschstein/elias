@@ -1,7 +1,6 @@
 import random
 from abc import abstractmethod
 from asyncio import Event
-from collections import Generator
 from pathlib import Path
 from queue import Queue
 from threading import Thread
@@ -64,7 +63,7 @@ class BaseDataManager(Generic[ConfigType, StatisticsType]):
         self._statistics_cls = statistics_cls
 
     @staticmethod
-    def to_batches(generator: Iterable, batch_size: int, lazy: bool = False) -> Generator:
+    def to_batches(generator: Iterable, batch_size: int, lazy: bool = False) -> Iterable:
         """
         Lazyly evaluated batch-wise loading of the code snippets.
         """
@@ -103,7 +102,7 @@ class BaseDataManager(Generic[ConfigType, StatisticsType]):
             if batch:
                 yield batch
 
-    def _lazy_load_slices(self) -> Generator:
+    def _lazy_load_slices(self) -> Iterable[str]:
         """
         Private generator for providing paths to dataset slices one by one. Implements shuffling of dataset slices.
         """
@@ -124,10 +123,10 @@ class BaseDataManager(Generic[ConfigType, StatisticsType]):
         for file_id in file_ids:
             yield self.get_dataset_slice_path(file_id)
 
-    def get_dataset_slice_path(self, dataset_slice_id: int):
+    def get_dataset_slice_path(self, dataset_slice_id: int) -> str:
         return f"{self._data_location}/{self._dataset_slice_prefix}{dataset_slice_id}{self._dataset_slice_suffix}"
 
-    def read(self, batch_size: int = 1) -> Generator:
+    def read(self, batch_size: int = 1) -> Iterable:
         return self.to_batches(self, batch_size)
 
     def load_config(self) -> ConfigType:

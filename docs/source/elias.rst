@@ -36,6 +36,14 @@ elias.io module
    :undoc-members:
    :show-inheritance:
 
+elias.model\_manager module
+---------------------------
+
+.. automodule:: elias.model_manager
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 elias.timing module
 -------------------
 
