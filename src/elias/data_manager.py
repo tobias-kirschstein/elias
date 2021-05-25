@@ -54,6 +54,9 @@ class BaseDataManager(Generic[ConfigType, StatisticsType]):
         """
 
         assert Path(data_location).is_dir(), f"Specified data location '{data_location}' is not a directory"
+        assert dataset_slice_prefix is None and dataset_slice_suffix is None or \
+               dataset_slice_prefix is not None and dataset_slice_suffix is not None, \
+            "dataset_slice_prefix and dataset_slice_suffix have to be specified together"
 
         self._data_location = data_location
         self._dataset_slice_prefix = dataset_slice_prefix
@@ -124,7 +127,10 @@ class BaseDataManager(Generic[ConfigType, StatisticsType]):
             yield self.get_dataset_slice_path(file_id)
 
     def get_dataset_slice_path(self, dataset_slice_id: int) -> str:
-        return f"{self._data_location}/{self._dataset_slice_prefix}{dataset_slice_id}{self._dataset_slice_suffix}"
+        dataset_slice_path = f"{self._data_location}/{self._dataset_slice_prefix}{dataset_slice_id}{self._dataset_slice_suffix}"
+        assert Path(dataset_slice_path).exists(), f"Could not find dataset slice `{dataset_slice_path}`"
+
+        return dataset_slice_path
 
     def read(self, batch_size: int = 1) -> Iterable:
         return self.to_batches(self, batch_size)
@@ -151,7 +157,7 @@ class BaseDataManager(Generic[ConfigType, StatisticsType]):
     def __iter__(self):
         pass
 
-
+# TODO: revise BufferedDataManager
 class BufferedDataManager(BaseDataManager):
     """
     Wrapper class for arbitrary data managers that preloads samples in the background and provides asynchroneous saving.

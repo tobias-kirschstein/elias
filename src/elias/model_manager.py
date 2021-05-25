@@ -1,8 +1,9 @@
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Type, TypeVar, Generic, Optional, List
 
 from elias.config import Config
-from elias.fs import list_file_numbering, generate_run_name
+from elias.fs import list_file_numbering, generate_run_name, create_directories
 from elias.io import save_json, load_json
 
 ModelConfigType = TypeVar('ModelConfigType', bound=Config)
@@ -19,6 +20,7 @@ class ModelManager(ABC, Generic[ModelType, ModelConfigType, TrainConfigType, Dat
                  cls_model_config: Type[ModelConfigType],
                  cls_train_config: Type[TrainConfigType],
                  cls_dataset_config: Type[DatasetConfigType]):
+        assert Path(f"{model_store_path}/{run_name}").is_dir(), f"Could not find directory '{model_store_path}/{run_name}'. Is the run name {run_name} correct?"
         self._model_store_path = f"{model_store_path}/{run_name}"
         self._run_name = run_name
         self._cls_model_config = cls_model_config
@@ -35,6 +37,7 @@ class ModelManager(ABC, Generic[ModelType, ModelConfigType, TrainConfigType, Dat
 
     # TODO: how do we want to have the Checkpoint Manager?
     def load_checkpoint(self, checkpoint_name: str, map_location=None) -> ModelType:
+        # TODO: add assertion for map_location
         if checkpoint_name in {'latest', 'last'}:
             checkpoint_name = -1
         if isinstance(checkpoint_name, int) and checkpoint_name < 0:
@@ -116,8 +119,10 @@ class RunManager:
         return self._cls_model_manager(runs_dir, run_name, cls_model_config, cls_train_config, cls_dataset_config)
 
     def new_run(self) -> ModelManager:
+        run_name = self.generate_run_name()
+        create_directories(f"{self._runs_dir}/{run_name}/")
         return self._create_model_manager(self._runs_dir,
-                                          self.generate_run_name(),
+                                          run_name,
                                           self._cls_model_config,
                                           self._cls_train_config,
                                           self._cls_dataset_config)
