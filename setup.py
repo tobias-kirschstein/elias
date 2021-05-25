@@ -1,4 +1,6 @@
-from setuptools import setup
+#!/usr/bin/env python
 
-# Actual setup is handled by setup.cfg
-setup()
+import setuptools
+
+if __name__ == "__main__":
+    setuptools.setup()
