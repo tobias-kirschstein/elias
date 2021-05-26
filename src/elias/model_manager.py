@@ -4,28 +4,29 @@ from typing import Type, TypeVar, Generic, Optional, List
 
 from elias.config import Config
 from elias.fs import list_file_numbering, generate_run_name, create_directories
+from elias.generic import get_type_var_instantiation
 from elias.io import save_json, load_json
 
 ModelConfigType = TypeVar('ModelConfigType', bound=Config)
 TrainConfigType = TypeVar('TrainConfigType', bound=Config)
 DatasetConfigType = TypeVar('DatasetConfigType', bound=Config)
+TrainSetupType = TypeVar('TrainSetupType', bound=Config)
 ModelType = TypeVar('ModelType')
 
 
-class ModelManager(ABC, Generic[ModelType, ModelConfigType, TrainConfigType, DatasetConfigType]):
+class ModelManager(ABC, Generic[ModelType, ModelConfigType, TrainConfigType, DatasetConfigType, TrainSetupType]):
 
     def __init__(self,
                  model_store_path: str,
-                 run_name: str,
-                 cls_model_config: Type[ModelConfigType],
-                 cls_train_config: Type[TrainConfigType],
-                 cls_dataset_config: Type[DatasetConfigType]):
-        assert Path(f"{model_store_path}/{run_name}").is_dir(), f"Could not find directory '{model_store_path}/{run_name}'. Is the run name {run_name} correct?"
+                 run_name: str):
+        assert Path(
+            f"{model_store_path}/{run_name}").is_dir(), f"Could not find directory '{model_store_path}/{run_name}'. Is the run name {run_name} correct?"
         self._model_store_path = f"{model_store_path}/{run_name}"
         self._run_name = run_name
-        self._cls_model_config = cls_model_config
-        self._cls_train_config = cls_train_config
-        self._cls_dataset_config = cls_dataset_config
+        self._cls_model_config: Type[ModelConfigType] = get_type_var_instantiation(self, ModelConfigType)
+        self._cls_train_config: Type[TrainConfigType] = get_type_var_instantiation(self, TrainConfigType)
+        self._cls_dataset_config: Type[DatasetConfigType] = get_type_var_instantiation(self, DatasetConfigType)
+        self._cls_train_setup: Type[TrainSetupType] = get_type_var_instantiation(self, TrainSetupType)
 
     @abstractmethod
     def store_checkpoint(self, model: Type[ModelType], checkpoint_name: str):
@@ -63,22 +64,28 @@ class ModelManager(ABC, Generic[ModelType, ModelConfigType, TrainConfigType, Dat
         return self._build_model(model_config, train_config)
 
     def store_model_config(self, model_config: ModelConfigType):
-        save_json(model_config.to_json(), f"{self._model_store_path}/model_config")
+        self._store_artifact(model_config, "model_config")
 
     def load_model_config(self) -> ModelConfigType:
-        return self._cls_model_config.from_json(load_json(f"{self._model_store_path}/model_config"))
+        return self._load_artifact(self._cls_model_config, "model_config")
 
     def store_train_config(self, train_config: TrainConfigType):
-        save_json(train_config.to_json(), f"{self._model_store_path}/train_config")
+        self._store_artifact(train_config, "train_config")
 
     def load_train_config(self) -> TrainConfigType:
-        return self._cls_train_config.from_json(load_json(f"{self._model_store_path}/train_config"))
+        return self._load_artifact(self._cls_train_config, "train_config")
 
     def store_dataset_config(self, dataset_config: DatasetConfigType):
-        save_json(dataset_config.to_json(), f"{self._model_store_path}/dataset_config")
+        self._store_artifact(dataset_config, "dataset_config")
 
     def load_dataset_config(self) -> DatasetConfigType:
-        return self._cls_dataset_config.from_json(load_json(f"{self._model_store_path}/dataset_config"))
+        return self._load_artifact(self._cls_dataset_config, "dataset_config")
+
+    def store_train_setup(self, train_setup: TrainSetupType):
+        self._store_artifact(train_setup, "train_setup")
+
+    def load_train_setup(self) -> TrainSetupType:
+        return self._load_artifact(self._cls_train_setup, "train_setup")
 
     def get_run_name(self) -> str:
         return self._run_name
@@ -86,22 +93,26 @@ class ModelManager(ABC, Generic[ModelType, ModelConfigType, TrainConfigType, Dat
     def get_model_store_path(self) -> str:
         return self._model_store_path
 
+    def _store_artifact(self, artifact: Config, artifact_name: str):
+        # TODO: should it be allows to store artifacts even if the corresponding type is not defined ?
+        save_json(artifact.to_json(), f"{self._model_store_path}/{artifact_name}")
 
-class RunManager:
+    def _load_artifact(self, artifact_cls: Type[Config], artifact_name: str) -> Config:
+        if isinstance(None, artifact_cls):
+            raise NotImplementedError(f"Cannot load `{artifact_name}` as its corresponding type is not defined")
+        return artifact_cls.from_json(load_json(f"{self._model_store_path}/{artifact_name}"))
+
+
+ModelManagerType = TypeVar("ModelManagerType", bound=ModelManager)
+
+
+class RunManager(Generic[ModelManagerType]):
 
     def __init__(self,
                  runs_dir: str,
-                 prefix: str,
-                 cls_model_manager: Type[ModelManager],
-                 cls_model_config: Type[ModelConfigType],
-                 cls_train_config: Type[TrainConfigType],
-                 cls_dataset_config: Type[DatasetConfigType]):
+                 prefix: str):
         self._runs_dir = runs_dir
         self._prefix = prefix
-        self._cls_model_manager = cls_model_manager
-        self._cls_model_config = cls_model_config
-        self._cls_train_config = cls_train_config
-        self._cls_dataset_config = cls_dataset_config
 
     def list_runs(self) -> List[str]:
         run_ids = list_file_numbering(self._runs_dir, f"{self._prefix}-")
@@ -110,26 +121,11 @@ class RunManager:
     def generate_run_name(self) -> str:
         return generate_run_name(self._runs_dir, self._prefix, match_arbitrary_suffixes=True)
 
-    def _create_model_manager(self,
-                              runs_dir: str,
-                              run_name: str,
-                              cls_model_config: Type[ModelConfigType],
-                              cls_train_config: Type[TrainConfigType],
-                              cls_dataset_config: Type[DatasetConfigType]) -> ModelManager:
-        return self._cls_model_manager(runs_dir, run_name, cls_model_config, cls_train_config, cls_dataset_config)
-
-    def new_run(self) -> ModelManager:
+    def new_run(self) -> ModelManagerType:
         run_name = self.generate_run_name()
         create_directories(f"{self._runs_dir}/{run_name}/")
-        return self._create_model_manager(self._runs_dir,
-                                          run_name,
-                                          self._cls_model_config,
-                                          self._cls_train_config,
-                                          self._cls_dataset_config)
+        return self.get_model_manager(run_name)
 
-    def get_model_manager(self, run_name) -> ModelManager:
-        return self._create_model_manager(self._runs_dir,
-                                          run_name,
-                                          self._cls_model_config,
-                                          self._cls_train_config,
-                                          self._cls_dataset_config)
+    @abstractmethod
+    def get_model_manager(self, run_name) -> ModelManagerType:
+        pass
