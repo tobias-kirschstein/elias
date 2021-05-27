@@ -9,8 +9,14 @@ import gzip
 import json
 import pickle
 
+import yaml
+
 from elias.fs import ensure_file_ending, create_directories
 
+
+# =========================================================================
+# Zipped JSON (.json.gz)
+# =========================================================================
 
 def save_zipped_json(obj: dict, path: str, suffix: str = 'json.gz'):
     """
@@ -55,6 +61,10 @@ def load_zipped_json(path: str, suffix: str = 'json.gz') -> dict:
         return json.load(f)
 
 
+# =========================================================================
+# Zipped pickles (.p.gz)
+# =========================================================================
+
 def save_zipped_object(obj: object, path: str, suffix: str = 'p.gz'):
     """
     Pickles, zips and stores an arbitrary python object at the specified `path`.
@@ -97,6 +107,10 @@ def load_zipped_object(path: str, suffix: str = 'p.gz') -> object:
     with gzip.open(path, 'rb') as f:
         return pickle.load(f)
 
+
+# =========================================================================
+# Pickled objects (.p)
+# =========================================================================
 
 def save_pickled(obj: object, path: str, suffix: str = 'p'):
     """
@@ -141,6 +155,10 @@ def load_pickled(path, suffix: str = 'p') -> object:
         return pickle.load(f)
 
 
+# =========================================================================
+# JSON (.json)
+# =========================================================================
+
 def save_json(obj: dict, path: str, suffix: str = 'json'):
     """
     Stores the given Python dict in JSON format at `path`.
@@ -182,3 +200,20 @@ def load_json(path, suffix: str = 'json') -> dict:
     path = ensure_file_ending(path, suffix)
     with open(path, 'r') as f:
         return json.load(f)
+
+
+# =========================================================================
+# YAML (.yaml)
+# =========================================================================
+
+def save_yaml(obj: dict, path: str, suffix: str = 'yaml'):
+    path = ensure_file_ending(path, suffix)
+    create_directories(path)
+    with open(path, 'w') as f:
+        yaml.dump(obj, f)
+
+
+def load_yaml(path: str, suffix: str = 'yaml') -> dict:
+    path = ensure_file_ending(path, suffix)
+    with open(path, 'r') as f:
+        return yaml.load(f, Loader=yaml.FullLoader)

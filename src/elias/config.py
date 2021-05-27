@@ -4,15 +4,17 @@ import inspect
 from abc import ABC
 from dataclasses import dataclass, asdict, fields
 from enum import Enum, EnumMeta, auto
-from typing import List, Tuple, Any, Type
+from typing import List, Tuple, Any, Type, get_type_hints
 
 import dacite
 from dacite import from_dict
+from dacite.dataclasses import get_fields
 
 
 # =========================================================================
 # Better Enum handling for persistable config objects
 # =========================================================================
+
 
 class NamedEnumMeta(EnumMeta):
     """
@@ -103,8 +105,13 @@ class Config(ABC):
         Any of these attributes that are not proper enums of their type will then be automatically instantiated.
         This comes handy when initializing a Config from command line values as these are often only strings hinting
         at the enum member.
-
         """
+
+        # Double check that self is actually a dataclass. Otherwise, one will potentially get weird bugs downstream
+        field_names = {field.name for field in get_fields(type(self))}
+        assert all([k in field_names for k in get_type_hints(type(self)).keys()]), \
+            f"Not all hinted types in `{self}` appear in its dataclass field list. Is it a dataclass?"
+
         casts = self.__class__._define_casts()
         for field in fields(self):
             field_value = getattr(self, field.name)
@@ -129,6 +136,7 @@ class Config(ABC):
                 casts.append(field_type)
         return casts
 
+    # TODO: rename. It doesn't make sense that this method is called from_json
     @classmethod
     def from_json(cls, json_config: dict) -> Config:
         """
@@ -149,6 +157,7 @@ class Config(ABC):
             converted.
 
         """
+
         return from_dict(cls, json_config, config=dacite.Config(cast=cls._define_casts()))
 
     @classmethod
