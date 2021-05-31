@@ -2,18 +2,19 @@ from __future__ import annotations
 
 import inspect
 from abc import ABC
-from dataclasses import dataclass, asdict, fields
+from dataclasses import dataclass, asdict, fields, field
 from enum import Enum, EnumMeta, auto
-from typing import List, Tuple, Any, Type, get_type_hints
+from pydoc import locate
+from typing import List, Tuple, Any, Type, get_type_hints, Generic, TypeVar
 
 import dacite
 from dacite import from_dict
 from dacite.dataclasses import get_fields
 
-
 # =========================================================================
 # Better Enum handling for persistable config objects
 # =========================================================================
+from elias.generic import get_type_var_instantiation
 
 
 class NamedEnumMeta(EnumMeta):
@@ -113,6 +114,8 @@ class Config(ABC):
             f"Not all hinted types in `{self}` appear in its dataclass field list. Is it a dataclass?"
 
         casts = self.__class__._define_casts()
+        # TODO: Can be that we have to use get_type_hints() intstead of fields() here, as fields does not contain
+        #  the actual classes when from __future__ import annotations is used
         for field in fields(self):
             field_value = getattr(self, field.name)
             if field.type in casts and not isinstance(field_value, field.type):
@@ -127,9 +130,11 @@ class Config(ABC):
         Returns
         -------
             a list of types for which explicit conversion is initiated whenever this Config dataclass is instantiated
-
         """
+
         casts = []
+        # TODO: Can be that we have to use get_type_hints() intstead of fields() here, as fields does not contain
+        #  the actual classes when from __future__ import annotations is used
         for field in fields(cls):
             field_type = field.type if inspect.isclass(field.type) else type(field.type)
             if issubclass(field_type, Enum):
@@ -158,7 +163,31 @@ class Config(ABC):
 
         """
 
-        return from_dict(cls, json_config, config=dacite.Config(cast=cls._define_casts()))
+        abstract_dataclasses = []
+        data_sub_class_types = []
+
+        for field_type in get_type_hints(cls).values():
+            field_type = field_type if inspect.isclass(field_type) else type(field_type)
+            # field_type = field.type if inspect.isclass(field.type) else type(field.type)
+            if issubclass(field_type, AbstractDataclass):
+                abstract_dataclasses.append(field_type)
+                data_sub_class_types.append(get_type_var_instantiation(field_type, DataSubclassType))
+
+        def instantiate_abc(abstract_dataclass_values: dict, data_sub_class_type):
+            # sub_class = locate(abstract_dataclass_values['sub_class'])
+            class_mapping = data_sub_class_type.get_mapping()
+            sub_class = class_mapping[abstract_dataclass_values['type']]
+            del abstract_dataclass_values['type']
+            return sub_class.from_json(abstract_dataclass_values)
+
+        dacite_config = dacite.Config(
+            cast=cls._define_casts(),
+            type_hooks={
+                abstract_dataclass:
+                    lambda abstract_dataclass_values: instantiate_abc(abstract_dataclass_values, data_sub_class_type)
+                for abstract_dataclass, data_sub_class_type
+                in zip(abstract_dataclasses, data_sub_class_types)})
+        return from_dict(cls, json_config, config=dacite_config)
 
     @classmethod
     def from_dict(cls, values: dict):
@@ -183,6 +212,36 @@ class Config(ABC):
             k: v for k, v in values.items()
             if k in inspect.signature(cls).parameters
         })
+
+
+DataSubclassType = TypeVar("DataSubclassType")
+
+
+@dataclass
+class AbstractDataclass(Generic[DataSubclassType], Config):
+    type: str = field(init=False, repr=False)
+
+    def __new__(cls, *args, **kwargs):
+        if cls == AbstractDataclass or cls.__bases__[0] == AbstractDataclass:
+            raise TypeError("Cannot instantiate abstract class.")
+        return super().__new__(cls)
+
+    def __post_init__(self):
+        data_sub_class_enum = get_type_var_instantiation(self, DataSubclassType)
+        sub_class_mapping = data_sub_class_enum.get_mapping()
+        sub_class = None
+        for sub_class_name, sub_class_type in sub_class_mapping.items():
+            if sub_class_type == type(self):
+                sub_class = sub_class_name
+
+        assert sub_class is not None, f"Could not find {type(self)} in mapping {sub_class_mapping} of {data_sub_class_enum}"
+
+        # cls = type(self)
+        # self.sub_class = f"{cls.__module__}.{cls.__name__}"
+
+        self.type = sub_class
+
+        super(AbstractDataclass, self).__post_init__()
 
 
 class DotDict(dict):
