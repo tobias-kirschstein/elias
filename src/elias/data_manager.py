@@ -1,10 +1,13 @@
 import random
-from abc import abstractmethod
+
+from abc import abstractmethod, ABC
 from asyncio import Event
 from pathlib import Path
 from queue import Queue
 from threading import Thread
-from typing import Iterable, TypeVar, Generic, Type
+from typing import Iterable, TypeVar, Generic, Type, List
+
+import numpy as np
 
 from elias.config import Config
 from elias.fs import list_file_numbering
@@ -13,6 +16,26 @@ from elias.timing import Timing
 
 ConfigType = TypeVar('ConfigType')
 StatisticsType = TypeVar('StatisticsType')
+
+
+class IterableDataLoader(ABC):
+    @abstractmethod
+    def __iter__(self):
+        pass
+
+
+class RandomAccessDataLoader(IterableDataLoader):
+
+    def __iter__(self):
+        return (self[idx] for idx in range(len(self)))
+
+    @abstractmethod
+    def __getitem__(self, item):
+        pass
+
+    @abstractmethod
+    def __len__(self):
+        pass
 
 
 class BaseDataManager(Generic[ConfigType, StatisticsType]):
@@ -156,6 +179,94 @@ class BaseDataManager(Generic[ConfigType, StatisticsType]):
     @abstractmethod
     def __iter__(self):
         pass
+
+
+class IterableDataManager(BaseDataManager[ConfigType, StatisticsType], IterableDataLoader, ABC):
+    pass
+
+
+class RandomAccessDataManager(BaseDataManager[ConfigType, StatisticsType], RandomAccessDataLoader, ABC):
+    pass
+
+
+class CombinedIterableDataLoader(IterableDataLoader):
+
+    def __init__(self, data_loaders: List[IterableDataLoader], shuffle=False):
+        self._data_loaders = data_loaders
+        self._shuffle = shuffle
+
+    def save(self, data, **kwargs):
+        raise Exception('CombinedDataManager cannot save')
+
+    def __iter__(self):
+        return CombinedIterableDataLoader.Iterator([iter(data_manager) for data_manager in self._data_loaders],
+                                                   self._shuffle)
+
+    class Iterator:
+
+        def __init__(self, iterators, shuffle):
+            self._iterators = iterators
+            self._identifiers = list(range(len(iterators)))
+            self._shuffle = shuffle
+
+        def __next__(self):
+            if len(self._iterators) == 0:
+                raise StopIteration()
+
+            if self._shuffle:
+                iterator_idx = np.random.choice(range(len(self._iterators)))
+            else:
+                iterator_idx = 0
+
+            try:
+                sample = next(self._iterators[iterator_idx])
+                return self._identifiers[iterator_idx], sample
+            except StopIteration:
+                del self._iterators[iterator_idx]
+                if self._identifiers is not None:
+                    del self._identifiers[iterator_idx]
+                return next(self)
+
+
+class CombinedRandomAccessDataLoader(RandomAccessDataLoader):
+
+    def __init__(self, data_loaders: List[RandomAccessDataLoader], shuffle=False):
+        self._data_loaders = data_loaders
+        self._shuffle = shuffle
+
+        if shuffle:
+            self._shuffled_indices = list(range(len(self)))
+            np.random.shuffle(self._shuffled_indices)
+
+    def __iter__(self):
+        return (self[idx] for idx in range(len(self)))
+
+    def __getitem__(self, idx: int):
+        assert -len(self) <= idx < len(self), f"Index {idx} is out of bounds for combined data loader of size {len(self)}"
+        if self._shuffle:
+            idx = self._shuffled_indices[idx]
+
+        dl_idx, sample_idx = self._get_dl_idx_for_sample(idx)
+        sample = self._data_loaders[dl_idx][sample_idx]
+
+        return dl_idx, sample
+
+    def __len__(self):
+        return sum([len(data_loader) for data_loader in self._data_loaders])
+
+    def _get_dl_idx_for_sample(self, idx: int):
+        assert -len(self) <= idx < len(
+            self), f"Index {idx} is out of bounds for combined data loader of size {len(self)}"
+        seen_samples = 0
+        current_dl_idx = 0
+        if idx < 0:
+            idx += len(self)
+        for data_loader in self._data_loaders:
+            seen_samples += len(data_loader)
+            if idx < seen_samples:
+                return current_dl_idx, idx - (seen_samples - len(data_loader))
+            current_dl_idx += 1
+
 
 # TODO: revise BufferedDataManager
 class BufferedDataManager(BaseDataManager):

@@ -168,7 +168,6 @@ class Config(ABC):
 
         for field_type in get_type_hints(cls).values():
             field_type = field_type if inspect.isclass(field_type) else type(field_type)
-            # field_type = field.type if inspect.isclass(field.type) else type(field.type)
             if issubclass(field_type, AbstractDataclass):
                 abstract_dataclasses.append(field_type)
                 data_sub_class_types.append(get_type_var_instantiation(field_type, DataSubclassType))
