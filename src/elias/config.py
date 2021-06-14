@@ -5,16 +5,18 @@ from abc import ABC
 from dataclasses import dataclass, asdict, fields, field
 from enum import Enum, EnumMeta, auto
 from pydoc import locate
-from typing import List, Tuple, Any, Type, get_type_hints, Generic, TypeVar
+from typing import List, Tuple, Any, Type, get_type_hints, Generic, TypeVar, Dict
 
 import dacite
 from dacite import from_dict
 from dacite.dataclasses import get_fields
 
+from elias.generic import get_type_var_instantiation, gather_types, is_type_var_instantiated
+
+
 # =========================================================================
 # Better Enum handling for persistable config objects
 # =========================================================================
-from elias.generic import get_type_var_instantiation
 
 
 class NamedEnumMeta(EnumMeta):
@@ -69,6 +71,21 @@ class StringEnum(str, NamedEnum):
         return name
 
 
+class ClassMapping(StringEnum):
+    """
+    Class Mapping enums serve the purpose of making persisted class names more human readable. When an
+    `AbstractDataClass` is defined with a corresponding `ClassMapping`, sub class of the data class will be stored
+    by their respective enum name instead of the fully qualified class name. This makes it easier for humans to specify
+    subclasses of `AbstractDataClass` in a config file.
+    For this to work, one simply defines a ClassMapping enum for every sub class of the `AbstractDataClass` and passes
+    the ClassMapping enum as a type var to the `AbstractDataClass`.
+    """
+
+    @classmethod
+    def get_mapping(cls) -> Dict[ClassMapping, Type]:
+        pass
+
+
 # =========================================================================
 # Actual Config class
 # =========================================================================
@@ -117,9 +134,11 @@ class Config(ABC):
         # TODO: Can be that we have to use get_type_hints() intstead of fields() here, as fields does not contain
         #  the actual classes when from __future__ import annotations is used
         for field in fields(self):
-            field_value = getattr(self, field.name)
-            if field.type in casts and not isinstance(field_value, field.type):
-                setattr(self, field.name, field.type(field_value))
+            # Only check visible fields (not hidden via field(init=False))
+            if hasattr(self, field.name):
+                field_value = getattr(self, field.name)
+                if field.type in casts and not isinstance(field_value, field.type):
+                    setattr(self, field.name, field.type(field_value))
 
     @classmethod
     def _define_casts(cls) -> List[Type]:
@@ -133,12 +152,12 @@ class Config(ABC):
         """
 
         casts = []
-        # TODO: Can be that we have to use get_type_hints() intstead of fields() here, as fields does not contain
-        #  the actual classes when from __future__ import annotations is used
-        for field in fields(cls):
-            field_type = field.type if inspect.isclass(field.type) else type(field.type)
+        field_types = get_type_hints(cls).values()
+        # Find all mentioned types in the dataclass definition (even those mentioned as generics)
+        for field_type in gather_types(field_types):
             if issubclass(field_type, Enum):
                 casts.append(field_type)
+
         return casts
 
     # TODO: rename. It doesn't make sense that this method is called from_json
@@ -170,20 +189,38 @@ class Config(ABC):
             field_type = field_type if inspect.isclass(field_type) else type(field_type)
             if issubclass(field_type, AbstractDataclass):
                 abstract_dataclasses.append(field_type)
-                data_sub_class_types.append(get_type_var_instantiation(field_type, DataSubclassType))
+                if is_type_var_instantiated(field_type, DataSubclassType):
+                    data_sub_class_types.append(get_type_var_instantiation(field_type, DataSubclassType))
+                else:
+                    data_sub_class_types.append(None)
 
-        def instantiate_abc(abstract_dataclass_values: dict, data_sub_class_type):
-            # sub_class = locate(abstract_dataclass_values['sub_class'])
-            class_mapping = data_sub_class_type.get_mapping()
-            sub_class = class_mapping[abstract_dataclass_values['type']]
+        def instantiate_adc_with_sub_class(abstract_dataclass_values: dict, data_sub_class_type):
+            # Instantiate the abstract data class field within the data class with its respective subclass as hinted
+            # by the attribute 'type'
+            if data_sub_class_type is None:
+                # AbstractDataClass does not have a corresponding enum class mapping -> interpret value as
+                # fully qualified class name
+                sub_class = locate(abstract_dataclass_values['type'])
+                assert sub_class is not None, f"Could not locate class {abstract_dataclass_values['type']}. " \
+                                              f"Is it globally accessible, i.e., not defined in local scope?"
+            else:
+                # Use the Class Mapping as a lookup to get the actual sub class that should be instantiated
+                class_mapping = data_sub_class_type.get_mapping()
+                sub_class = class_mapping[abstract_dataclass_values['type']]
+
+            # Delete the type attribute from the JSON input as it is implicitly defined
             del abstract_dataclass_values['type']
+
             return sub_class.from_json(abstract_dataclass_values)
 
+        # Register type hooks to replace every single AbstractDataClass with the respective subclass hinted by the
+        # 'type' attribute
         dacite_config = dacite.Config(
             cast=cls._define_casts(),
             type_hooks={
                 abstract_dataclass:
-                    lambda abstract_dataclass_values: instantiate_abc(abstract_dataclass_values, data_sub_class_type)
+                    lambda abstract_dataclass_values: instantiate_adc_with_sub_class(abstract_dataclass_values,
+                                                                                     data_sub_class_type)
                 for abstract_dataclass, data_sub_class_type
                 in zip(abstract_dataclasses, data_sub_class_types)})
         return from_dict(cls, json_config, config=dacite_config)
@@ -213,11 +250,59 @@ class Config(ABC):
         })
 
 
-DataSubclassType = TypeVar("DataSubclassType")
+# =========================================================================
+# AbstractDataClass to allow describing inheritance structures in dataclass fields
+# =========================================================================
+
+
+DataSubclassType = TypeVar("DataSubclassType", bound=ClassMapping)
 
 
 @dataclass
 class AbstractDataclass(Generic[DataSubclassType], Config):
+    """
+    An AbstractDataclass allows employing (human-configurable) sub-class structures in Config dataclasses.
+    Per default, it is not possible to use subclasses of a common superclass as attributes in a dataclass, as during
+    deserialization one cannot know which of the subclasses was serialized.
+    This is solved by inserting a 'type' attribute for sub classes which is filled during instantiation and which is
+    persisted. This 'type' attribute then enables deserializing the config values as it specifies the corresponding
+    class to create.
+    To ensure that this 'type' attribute is filled, the common superclass has to inherit from `AbstractDataClass`.
+    Optionally, the superclass can specify a `ClassMapping` enum to map the persisted class names of its sub classes
+    to more human-readable (and -editable) strings.
+
+    Examples
+    --------
+
+        >>> class MyClassMapping(ClassMapping):
+        >>>     CLASS_A = auto()
+        >>>     CLASS_B = auto()
+        >>>
+        >>>     @classmethod
+        >>>     def get_mapping(cls) -> Dict[ClassMapping, Type]:
+        >>>         return {cls.CLASS_A: MySubClassA, cls.CLASS_B: MySubClassB}
+        >>>
+        >>> @dataclass
+        >>> class MySuperClass(AbstractDataclass[MyClassMapping]):
+        >>>     super_class_attribute: int
+        >>>
+        >>> @dataclass
+        >>> class MySubClassA(MySuperClass):
+        >>>     a1: float
+        >>>
+        >>> @dataclass
+        >>> class MySubClassB(MySuperClass):
+        >>>     b1: str
+        >>>     b2: int
+        >>>
+        >>> @dataclass
+        >>> class MyConfig(Config):
+        >>>     config_value: int
+        >>>     my_object: MySuperClass
+        >>>
+        >>> my_config = MyConfig(1, MySubClassB("b1", 2))
+        >>> assert MyConfig.from_json(my_config.to_json()) == my_config
+    """
     type: str = field(init=False, repr=False)
 
     def __new__(cls, *args, **kwargs):
@@ -226,21 +311,58 @@ class AbstractDataclass(Generic[DataSubclassType], Config):
         return super().__new__(cls)
 
     def __post_init__(self):
-        data_sub_class_enum = get_type_var_instantiation(self, DataSubclassType)
-        sub_class_mapping = data_sub_class_enum.get_mapping()
-        sub_class = None
-        for sub_class_name, sub_class_type in sub_class_mapping.items():
-            if sub_class_type == type(self):
-                sub_class = sub_class_name
+        if is_type_var_instantiated(self, DataSubclassType):
+            # This AbstractDataClass has a corresponding class mapping enum. Use the respective enum name
+            # for this instance as 'type' attribute
+            data_sub_class_enum: ClassMapping = get_type_var_instantiation(self, DataSubclassType)
+            sub_class_mapping = data_sub_class_enum.get_mapping()
+            sub_class = None
+            for sub_class_name, sub_class_type in sub_class_mapping.items():
+                if sub_class_type == type(self):
+                    sub_class = sub_class_name
 
-        assert sub_class is not None, f"Could not find {type(self)} in mapping {sub_class_mapping} of {data_sub_class_enum}"
-
-        # cls = type(self)
-        # self.sub_class = f"{cls.__module__}.{cls.__name__}"
+            assert sub_class is not None, f"Could not find {type(self)} in mapping {sub_class_mapping} of {data_sub_class_enum}"
+        else:
+            # No ClassMapping defined -> use fully qualified name of this instance as 'type' attribute
+            cls = type(self)
+            module = cls.__module__
+            if module == '__builtin__':
+                sub_class = cls.__qualname__  # avoid outputs like '__builtin__.str'
+            else:
+                sub_class = f"{cls.__module__}.{cls.__qualname__}"
 
         self.type = sub_class
 
         super(AbstractDataclass, self).__post_init__()
+
+
+def implicit(default: Any = None):
+    """
+    Hints at that the specified field is to be initialized implicitly by other values and just exists for convenience.
+    Implicit fields cannot be directly specified via the constructor. Instead they have to be set after the config
+    has already been created. However, implicit values will also be listed when :meth:`to_json()` is called and they
+    can be directly set via :meth:`from_json()`, i.e., they can be loaded from persisted files.
+    Use Optional[T] if no default is specified as implicit values will default to None in that case.
+
+    Parameters
+    ----------
+        default: Any
+            The default value that will be used in case the implicit attribute is never defined
+
+    Returns
+    -------
+        a dataclass type hint that this attribute is implicitly defined by other values
+
+    Examples
+    --------
+        >>> @dataclass
+        >>> class MyConfig(Config):
+        >>>     a: int
+        >>>     b: int = implicit(0)
+        >>>     c: Optional[int] = implicit()
+    """
+
+    return field(init=False, default=default)
 
 
 class DotDict(dict):

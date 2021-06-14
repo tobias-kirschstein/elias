@@ -1,4 +1,6 @@
-from typing import get_args, Type, Union, get_origin, TypeVar, Generic
+from typing import get_args, Type, Union, get_origin, TypeVar, Generic, Iterable, Set
+
+from dacite.types import is_generic_collection, extract_generic, is_union
 
 
 def get_type_var_instantiation(obj_or_cls: Union[object, Type], type_var: TypeVar):
@@ -35,6 +37,81 @@ def get_type_var_instantiation(obj_or_cls: Union[object, Type], type_var: TypeVa
         the instantiated class for the respective `type_var` of the templated `obj_or_cls`
     """
 
+    generic_types, generic_type_vars = _gather_generic_types_and_vars(obj_or_cls)
+
+    # Find the specified type_var in the gathered typevars of all superclasses and return the respective template
+    # instantiation
+    for generic_type_var, generic_type in zip(generic_type_vars, generic_types):
+        if generic_type_var == type_var:
+            return generic_type
+
+    # If the specified type_var is not part of the inheritance tree of the passed object, an error is thrown
+    raise ValueError(f"Could not find typevar `{type_var}` for `{obj_or_cls}")
+
+
+def is_type_var_instantiated(obj_or_cls: Union[object, Type], type_var: TypeVar):
+    """
+    Returns whether the specified `type_var` is instantiated in the class definition of `obj_or_cls`.
+    Type vars can stay uninstantiated when one subclasses a generic type without specifying its type variables.
+
+    Parameters
+    ----------
+    obj_or_cls:
+        An instance of a templated class or the templated class itself for which instantiation of `type_var` should be
+        checked
+    type_var:
+        which type var to check
+
+    Returns
+    -------
+        whether `type_var` is instantiated in the class definition of `obj_or_class`
+
+    """
+    _, generic_type_vars = _gather_generic_types_and_vars(obj_or_cls)
+    return type_var in generic_type_vars
+
+
+def gather_types(types: Iterable[Type]) -> Set[Type]:
+    """
+    Gathers all types that are listed in some way in the specified type hint.
+
+    Examples
+    --------
+        gather_types(Union[TypeA, List[TypeB]]) -> {TypeA, TypeB}
+
+    Parameters
+    ----------
+        types: a collection of types that will be traversed recursively
+
+    Returns
+    -------
+        All types that are listed in the specified type hint
+    """
+
+    all_types = set()
+    for t in types:
+        # t = t if inspect.isclass(t) else type(t)  # Ensure that passed value is a class
+        if is_generic_collection(t) or is_union(t):
+            all_types.update(gather_types(extract_generic(t)))
+        else:
+            all_types.add(t)
+    return all_types
+
+
+def _rec_gather_generics(cls, generic_types, generic_type_vars):
+    for base_class in cls.__orig_bases__:
+        erased_class = get_origin(base_class)
+        if erased_class == Generic:
+            # Don't visit Generic superclasses as these are already implicitly handled by the subclass
+            continue
+        if erased_class is not None:
+            # Current super class is a templated type. Hence, we can gather type vars and template instantiations
+            generic_types.extend(get_args(base_class))
+            generic_type_vars.extend(erased_class.__parameters__)
+            _rec_gather_generics(erased_class, generic_types, generic_type_vars)
+
+
+def _gather_generic_types_and_vars(obj_or_cls: Union[object, Type]):
     generic_types = None
     generic_type_vars = None
     cls_origin = get_origin(obj_or_cls)
@@ -58,24 +135,4 @@ def get_type_var_instantiation(obj_or_cls: Union[object, Type], type_var: TypeVa
     assert generic_types is not None, f"Could not determine template types of `{obj_or_cls}`. Is it a generic type or instance?"
     assert generic_type_vars is not None, f"Could not determine generic type vars of `{obj_or_cls}`. Is it a generic type or instance?"
 
-    # Find the specified type_var in the gathered typevars of all superclasses and return the respective template
-    # instantiation
-    for generic_type_var, generic_type in zip(generic_type_vars, generic_types):
-        if generic_type_var == type_var:
-            return generic_type
-
-    # If the specified type_var is not part of the inheritance tree of the passed object, an error is thrown
-    raise ValueError(f"Could not find typevar `{type_var}` for `{obj_or_cls}")
-
-
-def _rec_gather_generics(cls, generic_types, generic_type_vars):
-    for base_class in cls.__orig_bases__:
-        erased_class = get_origin(base_class)
-        if erased_class == Generic:
-            # Don't visit Generic superclasses as these are already implicitly handled by the subclass
-            continue
-        if erased_class is not None:
-            # Current super class is a templated type. Hence, we can gather type vars and template instantiations
-            generic_types.extend(get_args(base_class))
-            generic_type_vars.extend(erased_class.__parameters__)
-            _rec_gather_generics(erased_class, generic_types, generic_type_vars)
+    return generic_types, generic_type_vars
