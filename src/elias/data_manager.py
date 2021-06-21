@@ -1,21 +1,23 @@
 import random
-
 from abc import abstractmethod, ABC
 from asyncio import Event
+from enum import Enum, auto
 from pathlib import Path
 from queue import Queue
 from threading import Thread
-from typing import Iterable, TypeVar, Generic, Type, List
+from typing import Iterable, TypeVar, Generic, List, Optional
 
 import numpy as np
 
 from elias.config import Config
 from elias.fs import list_file_numbering
+from elias.generic import get_type_var_instantiation
 from elias.io import load_json, save_json
 from elias.timing import Timing
 
-ConfigType = TypeVar('ConfigType')
-StatisticsType = TypeVar('StatisticsType')
+ConfigType = TypeVar('ConfigType', bound=Config)
+StatisticsType = TypeVar('StatisticsType', bound=Config)
+SampleType = TypeVar('SampleType')
 
 
 class IterableDataLoader(ABC):
@@ -38,7 +40,7 @@ class RandomAccessDataLoader(IterableDataLoader):
         pass
 
 
-class BaseDataManager(Generic[ConfigType, StatisticsType]):
+class BaseDataManager(Generic[SampleType, ConfigType, StatisticsType]):
     """
     A DataManager provides access to dataset files stored on a file system.
     It is assumed that all dataset files reside in the same root folder.
@@ -50,9 +52,7 @@ class BaseDataManager(Generic[ConfigType, StatisticsType]):
     def __init__(self, data_location: str,
                  shuffle: bool = False,
                  dataset_slice_prefix: str = None,
-                 dataset_slice_suffix: str = None,
-                 config_cls: Type[Config] = Config,
-                 statistics_cls: Type[Config] = Config):
+                 dataset_slice_suffix: str = None):
         """
         Parameters
         ----------
@@ -68,12 +68,15 @@ class BaseDataManager(Generic[ConfigType, StatisticsType]):
                 used and indicates how the dataset files are named
             dataset_slice_suffix: str, optional
                 See explanation of `dataset_slice_prefix`
-            config_cls: Type[Config], default Config
+
+        Type Vars
+        ---------
+            ConfigType:
                 The class of the dataset configuration (stored in ``config.json``) which is assumed to be a dataclass
                 subclassing :class:`elias.config.Config`. :meth:`save_config` and :meth:`load_config` take/retrieve the
                 dataset configuration as a Python object of this class.
-            statistics_cls: Type[Config], default Config
-                Same explanation as for `config_cls` just for the dataset statistics ``stats.json``
+            StatisticsType:
+                Same explanation as for `ConfigType` just for the dataset statistics ``stats.json``
         """
 
         assert Path(data_location).is_dir(), f"Specified data location '{data_location}' is not a directory"
@@ -85,11 +88,11 @@ class BaseDataManager(Generic[ConfigType, StatisticsType]):
         self._dataset_slice_prefix = dataset_slice_prefix
         self._dataset_slice_suffix = dataset_slice_suffix
         self._shuffle = shuffle
-        self._config_cls = config_cls
-        self._statistics_cls = statistics_cls
+        self._config_cls = get_type_var_instantiation(self, ConfigType)
+        self._statistics_cls = get_type_var_instantiation(self, StatisticsType)
 
     @staticmethod
-    def to_batches(generator: Iterable, batch_size: int, lazy: bool = False) -> Iterable:
+    def to_batches(generator: Iterable, batch_size: int, lazy: bool = False) -> Iterable[SampleType]:
         """
         Lazyly evaluated batch-wise loading of the code snippets.
         """
@@ -155,7 +158,7 @@ class BaseDataManager(Generic[ConfigType, StatisticsType]):
 
         return dataset_slice_path
 
-    def read(self, batch_size: int = 1) -> Iterable:
+    def read(self, batch_size: int = 1) -> Iterable[SampleType]:
         return self.to_batches(self, batch_size)
 
     def load_config(self) -> ConfigType:
@@ -181,56 +184,123 @@ class BaseDataManager(Generic[ConfigType, StatisticsType]):
         pass
 
 
-class IterableDataManager(BaseDataManager[ConfigType, StatisticsType], IterableDataLoader, ABC):
+class IterableDataManager(BaseDataManager[SampleType, ConfigType, StatisticsType], IterableDataLoader, ABC):
     pass
 
 
-class RandomAccessDataManager(BaseDataManager[ConfigType, StatisticsType], RandomAccessDataLoader, ABC):
+class RandomAccessDataManager(BaseDataManager[SampleType, ConfigType, StatisticsType], RandomAccessDataLoader, ABC):
     pass
+
+
+class CombinedIterableStopCriterion:
+
+    @abstractmethod
+    def should_stop(self, just_depleted_dl_idx: int, remaining_data_loader_indices: List[int]) -> bool:
+        pass
+
+
+class CombinedIterableStopCriterionAnyEmpty(CombinedIterableStopCriterion):
+
+    def should_stop(self, just_depleted_dl_idx: int, remaining_data_loader_indices: List[int]) -> bool:
+        return True
+
+
+class CombinedIterableStopCriterionAllEmpty(CombinedIterableStopCriterion):
+
+    def should_stop(self, just_depleted_dl_idx: int, remaining_data_loader_indices: List[int]) -> bool:
+        return len(remaining_data_loader_indices) == 0
+
+
+class CombinedIterableStopCriterionSpecificEmpty(CombinedIterableStopCriterion):
+
+    def __init__(self, specific_dl_idx: int):
+        self._specific_dl_idx = specific_dl_idx
+
+    def should_stop(self, just_depleted_dl_idx: int, remaining_data_loader_indices: List[int]) -> bool:
+        return just_depleted_dl_idx == self._specific_dl_idx
 
 
 class CombinedIterableDataLoader(IterableDataLoader):
 
-    def __init__(self, data_loaders: List[IterableDataLoader], shuffle=False):
+    def __init__(self, data_loaders: List[IterableDataLoader],
+                 shuffle=False,
+                 sample_weights: Optional[List[float]] = None,
+                 stop_criterion: CombinedIterableStopCriterion = CombinedIterableStopCriterionAllEmpty(),
+                 return_dl_idx: bool = True):
         self._data_loaders = data_loaders
         self._shuffle = shuffle
+        self._return_dl_idx = return_dl_idx
+
+        if shuffle:
+            if sample_weights is None:
+                # uniform random sampling
+                self._sample_weights = np.array([1 / len(data_loaders) for _ in range(len(data_loaders))])
+            else:
+                self._sample_weights = None if sample_weights is None else np.array(sample_weights) / sum(
+                    sample_weights)
+                assert sample_weights is None or len(sample_weights) == len(data_loaders), \
+                    f"Need to specify as many sample weights (got {len(self._sample_weights)}) " \
+                    f"as dataloaders ({len(data_loaders)})"
+        else:
+            assert sample_weights is None, f"shuffle has to be set, if sample_weights are used"
+            self._sample_weights = None
+
+        self._stop_criterion = stop_criterion
 
     def save(self, data, **kwargs):
         raise Exception('CombinedDataManager cannot save')
 
     def __iter__(self):
         return CombinedIterableDataLoader.Iterator([iter(data_manager) for data_manager in self._data_loaders],
-                                                   self._shuffle)
+                                                   self._sample_weights,
+                                                   self._stop_criterion,
+                                                   self._return_dl_idx)
 
     class Iterator:
 
-        def __init__(self, iterators, shuffle):
+        def __init__(self, iterators: List[Iterable],
+                     sample_weights: Optional[np.array],
+                     stop_criterion: CombinedIterableStopCriterion,
+                     return_dl_idx: bool):
             self._iterators = iterators
+            self._sample_weights = sample_weights
+            self._stop_criterion = stop_criterion
+            self._return_dl_idx = return_dl_idx
+
             self._identifiers = list(range(len(iterators)))
-            self._shuffle = shuffle
 
         def __next__(self):
-            if len(self._iterators) == 0:
+            if len(self._identifiers) == 0:
                 raise StopIteration()
 
-            if self._shuffle:
-                iterator_idx = np.random.choice(range(len(self._iterators)))
+            if self._sample_weights is not None:
+                sample_weights = self._sample_weights[self._identifiers]
+                assert sum(sample_weights) > 0, f"sample_weights (initial: {self._sample_weights}) sum to 0"
+                sample_weights /= sum(sample_weights)
+                iterator_idx = np.random.choice(self._identifiers, p=sample_weights)
             else:
-                iterator_idx = 0
+                # Iterate through all iterators in order
+                iterator_idx = self._identifiers[0]
 
             try:
                 sample = next(self._iterators[iterator_idx])
-                return self._identifiers[iterator_idx], sample
+                if self._return_dl_idx:
+                    return iterator_idx, sample
+                else:
+                    return sample
             except StopIteration:
-                del self._iterators[iterator_idx]
-                if self._identifiers is not None:
-                    del self._identifiers[iterator_idx]
-                return next(self)
+                self._identifiers.remove(iterator_idx)
+
+                if self._stop_criterion.should_stop(iterator_idx, self._identifiers):
+                    raise StopIteration()
+                else:
+                    return next(self)
 
 
 class CombinedRandomAccessDataLoader(RandomAccessDataLoader):
 
     def __init__(self, data_loaders: List[RandomAccessDataLoader], shuffle=False):
+        # TODO: sample_weights
         self._data_loaders = data_loaders
         self._shuffle = shuffle
 
@@ -242,7 +312,8 @@ class CombinedRandomAccessDataLoader(RandomAccessDataLoader):
         return (self[idx] for idx in range(len(self)))
 
     def __getitem__(self, idx: int):
-        assert -len(self) <= idx < len(self), f"Index {idx} is out of bounds for combined data loader of size {len(self)}"
+        assert -len(self) <= idx < len(
+            self), f"Index {idx} is out of bounds for combined data loader of size {len(self)}"
         if self._shuffle:
             idx = self._shuffled_indices[idx]
 

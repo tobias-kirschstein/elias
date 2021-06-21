@@ -2,7 +2,7 @@ import unittest
 from collections import defaultdict
 
 from elias.data_manager import RandomAccessDataLoader, CombinedRandomAccessDataLoader, IterableDataLoader, \
-    CombinedIterableDataLoader
+    CombinedIterableDataLoader, CombinedIterableStopCriterionAnyEmpty, CombinedIterableStopCriterionSpecificEmpty
 
 
 class ListRADL(RandomAccessDataLoader):
@@ -87,3 +87,76 @@ class DataManagerTest(unittest.TestCase):
         # Ensure that we can loop through the data loader a second time
         for _ in combined_dl:
             pass
+
+    def test_combined_iterable_stop_criterion(self):
+        dl_1 = ListIDL(list(range(0, 5)))
+        dl_2 = ListIDL(list(range(10, 20)))
+
+        combined_dl = CombinedIterableDataLoader([dl_1, dl_2], stop_criterion=CombinedIterableStopCriterionAnyEmpty())
+        i = 0
+        for i, (identifier, value) in enumerate(combined_dl):
+            self.assertEqual(identifier, 0)
+            self.assertEqual(value, i)
+        self.assertEqual(i, 4)  # After looping through the data loader we should have 5 elements
+
+        combined_dl = CombinedIterableDataLoader([dl_1, dl_2], stop_criterion=CombinedIterableStopCriterionSpecificEmpty(1))
+        i = 0
+        for i, (identifier, value) in enumerate(combined_dl):
+            if i < 5:
+                self.assertEqual(identifier, 0)
+                self.assertEqual(value, i)
+            else:
+                self.assertEqual(identifier, 1)
+                self.assertEqual(value, i + 5)
+        self.assertEqual(i, 14)  # After looping through the data loader we should have 5 elements
+
+        combined_dl = CombinedIterableDataLoader([dl_1, dl_2],
+                                                 stop_criterion=CombinedIterableStopCriterionSpecificEmpty(1),
+                                                 shuffle=True)
+        elements = set()
+        identifier_count = defaultdict(lambda: 0)
+        for identifier, value in combined_dl:
+            elements.add(value)
+            identifier_count[identifier] += 1
+
+        # Check that we have at least seen all elements of the second dataloader
+        self.assertEqual(identifier_count[1], 10)
+
+        combined_dl = CombinedIterableDataLoader([dl_1, dl_2],
+                                                 stop_criterion=CombinedIterableStopCriterionAnyEmpty(),
+                                                 shuffle=True,
+                                                 sample_weights=[0, 1])
+
+        elements = set()
+        identifier_count = defaultdict(lambda: 0)
+        for identifier, value in combined_dl:
+            elements.add(value)
+            identifier_count[identifier] += 1
+
+        # Check that we have at least seen all elements of the second dataloader
+        self.assertEqual(identifier_count[1], 10)
+        self.assertEqual(identifier_count[0], 0)
+
+        dl_1 = ListIDL(list(range(0, 1000)))
+        dl_2 = ListIDL(list(range(1000, 2000)))
+
+        combined_dl = CombinedIterableDataLoader([dl_1, dl_2],
+                                                 stop_criterion=CombinedIterableStopCriterionAnyEmpty(),
+                                                 shuffle=True,
+                                                 sample_weights=[0.1, 0.9])
+
+        elements = set()
+        identifier_count = defaultdict(lambda: 0)
+        for identifier, value in combined_dl:
+            elements.add(value)
+            identifier_count[identifier] += 1
+
+        # Check that we have at least seen all elements of the second dataloader
+        self.assertGreater(identifier_count[1], identifier_count[0])
+        self.assertGreater(identifier_count[0], 0)
+        self.assertLess(identifier_count[0], 300)
+
+        # Ensure that we can loop through the data loader a second time
+        for _ in combined_dl:
+            pass
+
