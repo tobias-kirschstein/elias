@@ -1,11 +1,12 @@
 import random
 from abc import abstractmethod, ABC
 from asyncio import Event
+from collections import Iterator
 from enum import Enum, auto
 from pathlib import Path
 from queue import Queue
 from threading import Thread
-from typing import Iterable, TypeVar, Generic, List, Optional
+from typing import Iterable, TypeVar, Generic, List, Optional, Sized
 
 import numpy as np
 
@@ -26,7 +27,7 @@ class IterableDataLoader(ABC):
         pass
 
 
-class RandomAccessDataLoader(IterableDataLoader):
+class RandomAccessDataLoader(Iterable):
 
     def __iter__(self):
         return (self[idx] for idx in range(len(self)))
@@ -184,7 +185,7 @@ class BaseDataManager(Generic[SampleType, ConfigType, StatisticsType]):
         pass
 
 
-class IterableDataManager(BaseDataManager[SampleType, ConfigType, StatisticsType], IterableDataLoader, ABC):
+class IterableDataManager(BaseDataManager[SampleType, ConfigType, StatisticsType], Iterable, ABC):
     pass
 
 
@@ -220,9 +221,9 @@ class CombinedIterableStopCriterionSpecificEmpty(CombinedIterableStopCriterion):
         return just_depleted_dl_idx == self._specific_dl_idx
 
 
-class CombinedIterableDataLoader(IterableDataLoader):
+class CombinedIterableDataLoader(Iterable):
 
-    def __init__(self, data_loaders: List[IterableDataLoader],
+    def __init__(self, data_loaders: List[Iterable],
                  shuffle=False,
                  sample_weights: Optional[List[float]] = None,
                  stop_criterion: CombinedIterableStopCriterion = CombinedIterableStopCriterionAllEmpty(),
@@ -258,7 +259,7 @@ class CombinedIterableDataLoader(IterableDataLoader):
 
     class Iterator:
 
-        def __init__(self, iterators: List[Iterable],
+        def __init__(self, iterators: List[Iterator],
                      sample_weights: Optional[np.array],
                      stop_criterion: CombinedIterableStopCriterion,
                      return_dl_idx: bool):
@@ -337,6 +338,123 @@ class CombinedRandomAccessDataLoader(RandomAccessDataLoader):
             if idx < seen_samples:
                 return current_dl_idx, idx - (seen_samples - len(data_loader))
             current_dl_idx += 1
+
+
+# TODO: revise doc
+class BufferedDataLoader(Iterable):
+    """
+    Wrapper class for arbitrary data managers that preloads samples in the background and provides asynchroneous saving.
+    Useful in multiprocessing settings where we can have the main process preloading data while other processes do the
+    work.
+    The idea is to eliminate any waiting when iterating over the samples or when saving a dataset slice. This is
+    obtained by using background worker threads that operate on queues instead of directly using the data_manager.
+    To ensure that the python process can end after using a BufferedDataManager, one should call the .shutdown() method
+    """
+
+    QUEUE_END_MSG = 'DONE'  # A special message that is used for internal queues to signalize that the producer thread is done
+
+    def __init__(self, data_loader: Iterable, size_load_buffer=5000):
+        """
+        :param data_manager: can be an arbitrary data manager that supports iterating over samples and saving dataset files
+        :param size_load_buffer: specifies how many SAMPLES will be prefetched from data_manager
+        """
+
+        self._data_loader = data_loader
+        self._load_buffer = Queue(size_load_buffer)
+        self._load_worker = None  # Will be initialized upon obtaining an iterator
+        self._stop_event = Event()
+
+    def __iter__(self):
+        """
+        Initializes a worker for prefetching data. The worker will start populating the internal queue once an iterator
+        is created. To avoid spawning multiple workers, one can only have one iterator at a time.
+        """
+
+        if self._load_worker is not None:
+            raise Exception("There is already an iterator running!")
+        self._load_worker = self.LoadWorker(self._data_loader, self._load_buffer, self._stop_event)
+        self._load_worker.start()
+        return BufferedDataLoader.Iterator(self)
+
+    def __len__(self):
+        try:
+            if isinstance(self._data_loader, Sized):
+                return len(self._data_loader)
+        except TypeError:
+            pass
+
+        raise TypeError("Underlying dataloader did not specify len()")
+
+    class Iterator(Iterator):
+
+        def __init__(self, buffered_data_loader):
+            self._buffered_data_loader: BufferedDataLoader = buffered_data_loader
+
+        def __next__(self):
+            """
+            Reads from the internal buffer and only blocks when it is empty. In this case, it might help to increase the
+            size of the internal buffer via size_load_buffer
+            """
+
+            print(self._buffered_data_loader._load_buffer.qsize())
+
+            data = self._buffered_data_loader._load_buffer.get()
+            if data == BufferedDataLoader.QUEUE_END_MSG:
+                # the load worker will put a special DONE MESSAGE to the internal queue to signal that the data_manager
+                # won't provide more samples
+                self._buffered_data_loader._load_worker.join()
+                self._buffered_data_loader._load_worker = None
+                raise StopIteration
+            return data
+
+    def __del__(self):
+        """
+        Destructor. Attempts to join all threads to allow the python script to exit cleanly.
+        """
+
+        self.shutdown()
+
+    def shutdown(self):
+        """
+        Clears all the buffers, terminates all workers and prepares the buffered data manager to be used again.
+        Should be called when one is done with iterating over the samples to allow the python process to end.
+        :return:
+        """
+
+        self._stop_event.set()  # Signalize the load worker to shutdown
+        if self._load_worker:
+            if self._load_worker.is_alive() and not self._load_buffer.empty():
+                # In this case, the load worker is waiting to put something into the queue and thus cannot receive the
+                # stop signal. Resolve by taking one element out of the read buffer
+                self._load_buffer.get()
+            self._load_worker.join()
+
+        self._load_buffer.queue.clear()
+        self._stop_event = Event()
+        self._load_worker = None
+
+    class LoadWorker(Thread):
+        """
+        Background thread that iterates over all samples in data_manager and puts them onto the internal load buffer.
+        To avoid out of memory issues, the internal queue has limited size which can be controlled via size_load_buffer
+        """
+
+        def __init__(self, data_loader: Iterable, read_buffer: Queue, stop_event: Event):
+            Thread.__init__(self)
+            self._data_loader = data_loader
+            self._read_buffer = read_buffer
+            self._stop_event = stop_event
+
+        def run(self) -> None:
+            with Timing() as t:
+                for sample in self._data_loader:
+                    print(f"Loading sample took {t.measure(): .3f}s")
+
+                    if self._stop_event.is_set():
+                        return
+                    self._read_buffer.put(sample)
+                    # Signalize that the data_manager iterator is empty
+                self._read_buffer.put(BufferedDataManager.QUEUE_END_MSG)
 
 
 # TODO: revise BufferedDataManager
