@@ -223,11 +223,34 @@ class CombinedIterableStopCriterionSpecificEmpty(CombinedIterableStopCriterion):
 
 class CombinedIterableDataLoader(Iterable):
 
-    def __init__(self, data_loaders: List[Iterable],
-                 shuffle=False,
+    def __init__(self,
+                 data_loaders: List[Iterable],
+                 shuffle: bool = False,
                  sample_weights: Optional[List[float]] = None,
                  stop_criterion: CombinedIterableStopCriterion = CombinedIterableStopCriterionAllEmpty(),
                  return_dl_idx: bool = True):
+        """
+        Combines the specified iterables into a single iterable dataloader. Per default, the given iterables will
+        be traversed in order. If :paramref:`~params.shuffle` is set, the dataloaders will be traversed randomly.
+
+        Parameters
+        ----------
+            data_loaders:
+                the iterables that should be combined
+            shuffle:
+                whether the iterables will be traversed in order or randomly
+            sample_weights:
+                If :paramref:`~params.shuffle` is `True`, the sample weights specify for each dataloader how likely
+                it should be to draw from it. If it is `None` elements will be drawn uniformly from the given iterables
+            stop_criterion:
+                specifies under what circumstances the combined dataloader should stop. E.g., whether it should exhaust
+                all given dataloaders, stop when any of the iterables is empty or continue until a specific dataloader
+                is empty
+            return_dl_idx:
+                whether the returned elements of the combined dataloader should be a tuple containing the index of the
+                original dataloader and the actual element (similar to Python's enumerate()).
+        """
+
         self._data_loaders = data_loaders
         self._shuffle = shuffle
         self._return_dl_idx = return_dl_idx

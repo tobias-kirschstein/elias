@@ -34,6 +34,10 @@ extensions = [
     'sphinx.ext.napoleon',
     'sphinx.ext.viewcode',
     'sphinx.ext.autosummary',
+
+    # External extensions (must be installed via pip)
+    'sphinx_autodoc_typehints',  # Automatically adds types to parameters. Needs to be added BEFORE sphinx_paramlinks
+    'sphinx_paramlinks',  # Adds the :paramref: command to reference method parameters in the doc
     #    'numpydoc'
 ]
 
@@ -71,7 +75,8 @@ autodoc_default_flags = [
 
 napoleon_google_docstring = False
 napoleon_use_ivar = True
-# napoleon_use_rtype = False  # More legible
+napoleon_use_param = True
+napoleon_use_rtype = False  # More legible
 
 
 # Ensure that the __init__ method gets documented.

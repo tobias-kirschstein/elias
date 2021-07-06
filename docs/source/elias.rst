@@ -28,6 +28,14 @@ elias.fs module
    :undoc-members:
    :show-inheritance:
 
+elias.generic module
+--------------------
+
+.. automodule:: elias.generic
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 elias.io module
 ---------------
 
