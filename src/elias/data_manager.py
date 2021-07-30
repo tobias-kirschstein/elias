@@ -2,7 +2,6 @@ import random
 from abc import abstractmethod, ABC
 from asyncio import Event
 from collections import Iterator
-from enum import Enum, auto
 from pathlib import Path
 from queue import Queue
 from threading import Thread
@@ -10,10 +9,10 @@ from typing import Iterable, TypeVar, Generic, List, Optional, Sized
 
 import numpy as np
 
+from elias.artifact import ArtifactManager, ArtifactType
 from elias.config import Config
 from elias.fs import list_file_numbering
 from elias.generic import get_type_var_instantiation
-from elias.io import load_json, save_json
 from elias.timing import Timing
 
 ConfigType = TypeVar('ConfigType', bound=Config)
@@ -41,7 +40,7 @@ class RandomAccessDataLoader(Iterable):
         pass
 
 
-class BaseDataManager(Generic[SampleType, ConfigType, StatisticsType]):
+class BaseDataManager(Generic[SampleType, ConfigType, StatisticsType], ArtifactManager):
     """
     A DataManager provides access to dataset files stored on a file system.
     It is assumed that all dataset files reside in the same root folder.
@@ -53,7 +52,8 @@ class BaseDataManager(Generic[SampleType, ConfigType, StatisticsType]):
     def __init__(self, data_location: str,
                  shuffle: bool = False,
                  dataset_slice_prefix: str = None,
-                 dataset_slice_suffix: str = None):
+                 dataset_slice_suffix: str = None,
+                 artifact_type: ArtifactType = ArtifactType.JSON):
         """
         Parameters
         ----------
@@ -79,11 +79,10 @@ class BaseDataManager(Generic[SampleType, ConfigType, StatisticsType]):
             StatisticsType:
                 Same explanation as for `ConfigType` just for the dataset statistics ``stats.json``
         """
-
-        assert Path(data_location).is_dir(), f"Specified data location '{data_location}' is not a directory"
         assert dataset_slice_prefix is None and dataset_slice_suffix is None or \
                dataset_slice_prefix is not None and dataset_slice_suffix is not None, \
             "dataset_slice_prefix and dataset_slice_suffix have to be specified together"
+        super(BaseDataManager, self).__init__(data_location, artifact_type=artifact_type)
 
         self._data_location = data_location
         self._dataset_slice_prefix = dataset_slice_prefix
@@ -163,18 +162,18 @@ class BaseDataManager(Generic[SampleType, ConfigType, StatisticsType]):
         return self.to_batches(self, batch_size)
 
     def load_config(self) -> ConfigType:
-        json_config = load_json(f"{self._data_location}/config.json")
+        json_config = self._load_artifact("config")
         return self._config_cls.from_json(json_config)
 
     def save_config(self, config: ConfigType):
-        save_json(config.to_json(), f"{self._data_location}/config.json")
+        self._save_artifact(config.to_json(), "config")
 
     def load_stats(self) -> StatisticsType:
-        json_statistics = load_json(f"{self._data_location}/stats.json")
+        json_statistics = self._load_artifact("stats")
         return self._statistics_cls.from_json(json_statistics)
 
     def save_stats(self, stats: StatisticsType):
-        save_json(stats.to_json(), f"{self._data_location}/stats.json")
+        self._save_artifact(stats.to_json(), "stats")
 
     @abstractmethod
     def save(self, data: object, **kwargs):
@@ -222,6 +221,7 @@ class CombinedIterableStopCriterionSpecificEmpty(CombinedIterableStopCriterion):
 
 
 class CombinedIterableDataLoader(Iterable):
+    # TODO: Add capabilities for steering how iterables are traversed when shuffle=False
 
     def __init__(self,
                  data_loaders: List[Iterable],

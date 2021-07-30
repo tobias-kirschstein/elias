@@ -3,7 +3,7 @@ from enum import auto
 from typing import Dict, Type
 from unittest import TestCase
 
-from elias.config import AbstractDataclass, Config, ClassMapping
+from elias.config import AbstractDataclass, Config, ClassMapping, deprecated, backward_compatible
 
 
 class ConfigTest(TestCase):
@@ -83,3 +83,35 @@ class ConfigTest(TestCase):
         self.assertEqual(tc.test, b_test)
         self.assertEqual(tc.to_json()['test']['type'],
                          f"{ConfigTest.BWithoutMapping.__module__}.{ConfigTest.BWithoutMapping.__qualname__}")
+
+    # def test_deprecated_attribute(self):
+    #     @dataclass
+    #     class OldTestConfig(Config):
+    #         old: int = 3
+    #
+    #     @dataclass
+    #     class TestConfig(Config):
+    #         regular: int = backward_compatible()
+    #         old: int = deprecated(3)
+    #
+    #         def _backward_compatibility(self):
+    #             print("backward_compatibility")
+    #             super(TestConfig, self)._backward_compatibility()
+    #
+    #             if self.old != 3 and self.regular is None:
+    #                 self.regular = self.old
+    #
+    #     old_config = OldTestConfig(7)
+    #     old_json = old_config.to_json()
+    #     new_config = TestConfig.from_json(old_json)
+    #
+    #     self.assertNotIn('old', new_config.__dict__)
+    #     self.assertEqual(new_config.regular, old_config.old)
+    #
+    #     new_config = TestConfig(regular=5)
+    #     self.assertEqual(new_config.regular, 5)
+    #     self.assertNotIn('old', new_config.__dict__)
+    #     print(new_config.to_json())
+    #
+    #     new_config = TestConfig()
+

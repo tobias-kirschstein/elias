@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import functools
 import inspect
+import types
 from abc import ABC
-from dataclasses import dataclass, asdict, fields, field
+from dataclasses import dataclass, asdict, fields, field, InitVar, _FIELDS
 from enum import Enum, EnumMeta, auto
 from pydoc import locate
 from typing import List, Tuple, Any, Type, get_type_hints, Generic, TypeVar, Dict
@@ -105,7 +107,7 @@ class Config(ABC):
 
     def to_json(self) -> dict:
         """
-        Converts this configuration dataclass into an ordinary Python dictionary that can be easy persisted as JSON.
+        Converts this configuration dataclass into an ordinary Python dictionary that can easily be persisted as JSON.
         Special attention is given to enum members of the dataclass. As enums cannot be serialized per default, these
         are represented by their intrinsic value instead. When deserializing the stored JSON with :meth:`from_json`
         the enum values can be parsed into proper enums again thanks to the type annotation in the underlying dataclass.
@@ -131,7 +133,7 @@ class Config(ABC):
             f"Not all hinted types in `{self}` appear in its dataclass field list. Is it a dataclass?"
 
         casts = self.__class__._define_casts()
-        # TODO: Can be that we have to use get_type_hints() intstead of fields() here, as fields does not contain
+        # TODO: Can be that we have to use get_type_hints() instead of fields() here, as fields does not contain
         #  the actual classes when from __future__ import annotations is used
         for field in fields(self):
             # Only check visible fields (not hidden via field(init=False))
@@ -139,6 +141,42 @@ class Config(ABC):
                 field_value = getattr(self, field.name)
                 if field.type in casts and not isinstance(field_value, field.type):
                     setattr(self, field.name, field.type(field_value))
+
+        # if hasattr(self, "_enable_backward_compatibility") and self._enable_backward_compatibility:
+        #     self._backward_compatibility()
+        #
+        # for field in fields(self):
+        #     if "deprecated" in field.metadata and field.metadata["deprecated"] and hasattr(self, field.name):
+        #         # We expect that a field that is marked as deprecated has already been dealt with in
+        #         # _backward_compatibility()
+        #         delattr(self, field.name)
+        #
+        #     if "required" in field.metadata and field.metadata["required"]:
+        #         if getattr(self, field.name) is None:
+        #             raise ValueError(f"Field {field.name} is required!")
+
+    @classmethod
+    def _backward_compatibility(cls, loaded_config: Dict):
+        """
+        Allows coping with Configs that change over time by manually altering the `loaded_config` to adhere to the
+        current version of the Config.
+
+        Parameters
+        ----------
+            loaded_config: the config values that have been loaded from a (potentially) outdated config file.
+
+        """
+
+        # Recursively go through all fields and give them the possibility to apply backward compatibility
+        for f in fields(cls):
+            # In case, a field has a Union/List etc. type we need to check all of them
+            # TODO: What if we have Union[A, B] and the _backward_compatibility() methods of A and B disagree?
+            possible_types = gather_types([f.type])
+            for t in possible_types:
+                t = t if inspect.isclass(t) else type(t)
+                if issubclass(t, Config) and f.name in loaded_config:
+                    # If a field is a Config Type, apply its backward compatibility method
+                    t._backward_compatibility(loaded_config[f.name])
 
     @classmethod
     def _define_casts(cls) -> List[Type]:
@@ -223,6 +261,19 @@ class Config(ABC):
                                                                                      data_sub_class_type)
                 for abstract_dataclass, data_sub_class_type
                 in zip(abstract_dataclasses, data_sub_class_types)})
+
+        # backward_cls = type(cls.__name__, cls.__bases__, dict(cls.__dict__))
+        #
+        # def backward_compatibility_new(cls_new, *args, **kwargs):
+        #     obj = super(Config, cls).__new__(cls)
+        #     obj._enable_backward_compatibility = True
+        #     # For some reason, __init__ isn't called anymore if __new__ is overridden. So manually call it here
+        #     obj.__init__(*args, **kwargs)
+        #     return obj
+        #
+        # backward_cls.__new__ = backward_compatibility_new
+        # return from_dict(backward_cls, json_config, config=dacite_config)
+        cls._backward_compatibility(json_config)
         return from_dict(cls, json_config, config=dacite_config)
 
     @classmethod
@@ -363,3 +414,10 @@ def implicit(default: Any = None):
     """
 
     return field(init=False, default=default)
+
+# def deprecated(default=None):
+#     return field(default=default, repr=False, compare=False, metadata={"deprecated": True})
+#
+#
+# def backward_compatible():
+#     return field(default=None, metadata={"required": True})
