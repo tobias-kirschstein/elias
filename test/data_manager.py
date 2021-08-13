@@ -46,7 +46,7 @@ class DataManagerTest(unittest.TestCase):
             else:
                 self.assertEqual(identifier, 1)
 
-        combined_dl = CombinedRandomAccessDataLoader([dl_1, dl_2],  shuffle=True)
+        combined_dl = CombinedRandomAccessDataLoader([dl_1, dl_2], shuffle=True)
         # Ensure that negative indexing works as expected
         self.assertEqual(combined_dl[0], combined_dl[-15])
         self.assertEqual(combined_dl[2], combined_dl[-13])
@@ -99,7 +99,8 @@ class DataManagerTest(unittest.TestCase):
             self.assertEqual(value, i)
         self.assertEqual(i, 4)  # After looping through the data loader we should have 5 elements
 
-        combined_dl = CombinedIterableDataLoader([dl_1, dl_2], stop_criterion=CombinedIterableStopCriterionSpecificEmpty(1))
+        combined_dl = CombinedIterableDataLoader([dl_1, dl_2],
+                                                 stop_criterion=CombinedIterableStopCriterionSpecificEmpty(1))
         i = 0
         for i, (identifier, value) in enumerate(combined_dl):
             if i < 5:
@@ -159,4 +160,3 @@ class DataManagerTest(unittest.TestCase):
         # Ensure that we can loop through the data loader a second time
         for _ in combined_dl:
             pass
-

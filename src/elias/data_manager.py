@@ -184,11 +184,11 @@ class BaseDataManager(Generic[SampleType, ConfigType, StatisticsType], ArtifactM
         pass
 
 
-class IterableDataManager(BaseDataManager[SampleType, ConfigType, StatisticsType], Iterable, ABC):
+class IterableDataManager(Iterable, BaseDataManager[SampleType, ConfigType, StatisticsType], ABC):
     pass
 
 
-class RandomAccessDataManager(BaseDataManager[SampleType, ConfigType, StatisticsType], RandomAccessDataLoader, ABC):
+class RandomAccessDataManager(RandomAccessDataLoader, BaseDataManager[SampleType, ConfigType, StatisticsType], ABC):
     pass
 
 

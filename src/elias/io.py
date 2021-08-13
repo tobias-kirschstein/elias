@@ -11,7 +11,7 @@ import pickle
 
 import yaml
 
-from elias.fs import ensure_file_ending, create_directories
+from elias.fs import ensure_file_ending, ensure_directory_exists, ensure_directory_exists_for_file
 
 
 # =========================================================================
@@ -34,7 +34,7 @@ def save_zipped_json(obj: dict, path: str, suffix: str = 'json.gz'):
     """
 
     path = ensure_file_ending(path, suffix)
-    create_directories(path)
+    ensure_directory_exists_for_file(path)
     with gzip.open(path, 'wb') as f:
         json.dump(obj, f)
 
@@ -81,7 +81,7 @@ def save_zipped_object(obj: object, path: str, suffix: str = 'p.gz'):
     """
 
     path = ensure_file_ending(path, suffix)
-    create_directories(path)
+    ensure_directory_exists_for_file(path)
     with gzip.open(path, 'wb') as f:
         pickle.dump(obj, f)
 
@@ -128,7 +128,7 @@ def save_pickled(obj: object, path: str, suffix: str = 'p'):
     """
 
     path = ensure_file_ending(path, suffix)
-    create_directories(path)
+    ensure_directory_exists_for_file(path)
     with open(f"{path}", 'wb') as f:
         pickle.dump(obj, f)
 
@@ -175,7 +175,7 @@ def save_json(obj: dict, path: str, suffix: str = 'json'):
     """
 
     path = ensure_file_ending(path, suffix)
-    create_directories(path)
+    ensure_directory_exists_for_file(path)
     with open(path, 'w') as f:
         json.dump(obj, f, indent=4)
 
@@ -208,7 +208,7 @@ def load_json(path, suffix: str = 'json') -> dict:
 
 def save_yaml(obj: dict, path: str, suffix: str = 'yaml'):
     path = ensure_file_ending(path, suffix)
-    create_directories(path)
+    ensure_directory_exists_for_file(path)
     with open(path, 'w') as f:
         yaml.dump(obj, f)
 

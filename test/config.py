@@ -3,7 +3,7 @@ from enum import auto
 from typing import Dict, Type
 from unittest import TestCase
 
-from elias.config import AbstractDataclass, Config, ClassMapping, deprecated, backward_compatible
+from elias.config import AbstractDataclass, Config, ClassMapping
 
 
 class ConfigTest(TestCase):

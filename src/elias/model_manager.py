@@ -6,7 +6,7 @@ from typing import Type, TypeVar, Generic, Optional, List, Union
 
 from elias.artifact import ArtifactManager, ArtifactType
 from elias.config import Config
-from elias.fs import list_file_numbering, generate_run_name, create_directories
+from elias.fs import list_file_numbering, generate_run_name, ensure_directory_exists_for_file
 from elias.generic import get_type_var_instantiation
 
 ModelConfigType = TypeVar('ModelConfigType', bound=Config)
@@ -152,7 +152,7 @@ class RunManager(Generic[ModelManagerType]):
     def new_run(self, run_name: Optional[str] = None) -> ModelManagerType:
         if run_name is None:
             run_name = self.generate_run_name()
-        create_directories(f"{self._runs_dir}/{run_name}/")
+        ensure_directory_exists_for_file(f"{self._runs_dir}/{run_name}/")
         return self.get_model_manager(run_name)
 
     @abstractmethod

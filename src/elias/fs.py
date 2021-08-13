@@ -9,8 +9,29 @@ def ensure_file_ending(file: str, ending: str) -> str:
     return f"{file}.{ending}" if f".{ending}" not in file else file
 
 
-def create_directories(path: str):
+def ensure_directory_exists_for_file(path: str):
+    """
+    Ensures that the folder to the specified path exists and creates a nested folder structure if necessary.
+    Be careful to use trailing '/' if `path` directly constitutes the target folder (and not an arbitrary file
+    within that folder).
+
+    Parameters
+    ----------
+    path: path to the file or folder for which an underlying directory structure will be ensured
+    """
     Path(os.path.dirname(path)).mkdir(parents=True, exist_ok=True)
+
+
+def ensure_directory_exists(path: str):
+    """
+    Ensures that the specified folder exists and creates a nested folder structure if necessary.
+
+    Parameters
+    ----------
+    path: path to the folder which should exist
+    """
+
+    Path(path).mkdir(parents=True, exist_ok=True)
 
 
 def list_file_numbering(directory: str, prefix: str, suffix: str = None) -> List[int]:
