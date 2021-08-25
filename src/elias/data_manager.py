@@ -2,10 +2,11 @@ import random
 from abc import abstractmethod, ABC
 from asyncio import Event
 from collections import Iterator
+from math import ceil
 from pathlib import Path
 from queue import Queue
 from threading import Thread
-from typing import Iterable, TypeVar, Generic, List, Optional, Sized
+from typing import Iterable, TypeVar, Generic, List, Optional, Sized, Generator
 
 import numpy as np
 
@@ -92,9 +93,9 @@ class BaseDataManager(Generic[SampleType, ConfigType, StatisticsType], ArtifactM
         self._statistics_cls = get_type_var_instantiation(self, StatisticsType)
 
     @staticmethod
-    def to_batches(generator: Iterable, batch_size: int, lazy: bool = False) -> Iterable[SampleType]:
+    def to_batches(generator: Iterable, batch_size: int, lazy: bool = False) -> Generator[List[SampleType], None, None]:
         """
-        Lazyly evaluated batch-wise loading of the code snippets.
+        Lazyly evaluated batch-wise loading
         """
 
         if batch_size == 1:
@@ -130,6 +131,24 @@ class BaseDataManager(Generic[SampleType, ConfigType, StatisticsType], ArtifactM
                     batch = []
             if batch:
                 yield batch
+
+    @staticmethod
+    def batchify_tensor(tensor, batch_size: int) -> Iterable:
+        try:
+            n_samples = len(tensor)
+        except Exception:
+            try:
+                n_samples = tensor.shape[0]
+            except Exception:
+                raise ValueError(f"Cannot infer length of passed tensor with type {type(tensor)}. "
+                                 f"Ensure to use a common Tensor/Array format")
+
+        n_batches = ceil(n_samples / batch_size)
+        for i_batch in range(n_batches):
+            if i_batch == n_batches - 1:
+                yield tensor[i_batch * batch_size:]  # Return all remaining samples as the last batch
+            else:
+                yield tensor[i_batch * batch_size: (i_batch + 1) * batch_size]
 
     def _lazy_load_slices(self) -> Iterable[str]:
         """

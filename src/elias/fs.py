@@ -2,7 +2,7 @@ import os
 import re
 from glob import glob
 from pathlib import Path
-from typing import List
+from typing import List, Optional, Tuple
 
 
 def ensure_file_ending(file: str, ending: str) -> str:
@@ -34,15 +34,46 @@ def ensure_directory_exists(path: str):
     Path(path).mkdir(parents=True, exist_ok=True)
 
 
-def list_file_numbering(directory: str, prefix: str, suffix: str = None) -> List[int]:
+def extract_file_numbering(directory: str, regex: str) -> List[Tuple[int, str]]:
+    r"""
+    Finds all (numbered) files/folder in the specified directory that match the regex and returns them in sorted fashion
+    according to the number in the file/folder name. The numbering of the file/folder will also be returned
+    The passed regex is expected to have exactly one occurrence of (-?\d+) which controls where in the file/folder
+    name the number should appear.
+    This method solves the problem of numbers in file/folder names not being treated as "numbers" by the OS but
+    rather as strings, i.e., 2-apple will appear after 10-banana although 2 < 10.
+
+
+    Parameters
+    ----------
+    directory: in which directory to search for matching files/folders
+    regex: specifies which file/folder names should be filtered and where in their name the numbering occurs
+
+    Returns
+    -------
+    A sorted list of (numbering, file name) pairs for each matching file/folder in the passed directory
     """
-    Finds all files in the specified directory that match the given {prefix}{number}{suffix} pattern.
+
+    assert r"(-?\d+)" in regex, r"(-?\d+) has to appear in passed regex exactly once"
+    regex = re.compile(regex)
+    file_names = [Path(file_name).stem for file_name in glob(f"{directory}/*")]
+    file_names_and_numbering = [(int(regex.search(file_name).group(1)), file_name)
+                                for file_name in file_names if regex.match(file_name)]
+    file_names_and_numbering = sorted(file_names_and_numbering, key=lambda x: x[0])
+
+    return file_names_and_numbering
+
+
+# TODO: find some way to specify string format in a generic way with a single place for a number
+def list_file_numbering(directory: str, prefix: Optional[str] = None, suffix: Optional[str] = None) -> List[int]:
+    """
+    Finds all files in the specified directory that match the given {prefix}-{number}{suffix} pattern.
     All found {number}s are returned as a list in ascending order.
 
     Parameters
     ----------
         directory: where to search for path numberings
-        prefix: prefix of files to be considered
+        prefix: (optional) prefix of files to be considered
         suffix: (optional) suffix of files to be considered
 
     Returns
@@ -51,6 +82,12 @@ def list_file_numbering(directory: str, prefix: str, suffix: str = None) -> List
     """
     if suffix is None or suffix.count('.') == 1 and suffix[0] == '.':
         suffix = ""
+
+    if prefix is None:
+        prefix = ""
+    elif not prefix[-1] == '-':
+        prefix = prefix + '-'
+
     regex = re.compile(rf"{prefix}(-?\d+){Path(suffix).stem}")
     file_names = glob(f"{directory}/{prefix}*{suffix}")
     file_names = [Path(file_name).stem for file_name in file_names]

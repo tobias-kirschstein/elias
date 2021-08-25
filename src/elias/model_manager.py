@@ -134,6 +134,7 @@ class ModelManager(ABC, Generic[
 ModelManagerType = TypeVar("ModelManagerType", bound=ModelManager)
 
 
+# TODO: Create generic RunManager (not specific to ModelManagers)
 class RunManager(Generic[ModelManagerType]):
 
     def __init__(self,

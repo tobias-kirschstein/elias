@@ -1,8 +1,10 @@
 import unittest
 from collections import defaultdict
+from typing import Generator
 
 from elias.data_manager import RandomAccessDataLoader, CombinedRandomAccessDataLoader, IterableDataLoader, \
-    CombinedIterableDataLoader, CombinedIterableStopCriterionAnyEmpty, CombinedIterableStopCriterionSpecificEmpty
+    CombinedIterableDataLoader, CombinedIterableStopCriterionAnyEmpty, CombinedIterableStopCriterionSpecificEmpty, \
+    BaseDataManager
 
 
 class ListRADL(RandomAccessDataLoader):
@@ -160,3 +162,16 @@ class DataManagerTest(unittest.TestCase):
         # Ensure that we can loop through the data loader a second time
         for _ in combined_dl:
             pass
+
+    def test_batchify_tensor(self):
+        tensor = list(range(20))
+        batched_tensor = BaseDataManager.batchify_tensor(tensor, batch_size=8)
+        self.assertTrue(isinstance(batched_tensor, Generator))
+
+        batched_tensor = list(batched_tensor)
+        self.assertEqual(len(batched_tensor), 3)
+        self.assertEqual(batched_tensor[0], list(range(8)))
+        self.assertEqual(batched_tensor[1], list(range(8, 16)))
+        self.assertEqual(batched_tensor[2], list(range(16, 20)))
+
+

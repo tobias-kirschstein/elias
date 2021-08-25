@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 import inspect
 import types
-from abc import ABC
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, asdict, fields, field, InitVar, _FIELDS
 from enum import Enum, EnumMeta, auto
 from pydoc import locate
@@ -84,6 +84,7 @@ class ClassMapping(StringEnum):
     """
 
     @classmethod
+    @abstractmethod
     def get_mapping(cls) -> Dict[ClassMapping, Type]:
         pass
 

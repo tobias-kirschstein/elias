@@ -1,4 +1,5 @@
-from typing import get_args, Type, Union, get_origin, TypeVar, Generic, Iterable, Set
+from dataclasses import is_dataclass
+from typing import get_args, Type, Union, get_origin, TypeVar, Generic, Iterable, Set, get_type_hints
 
 from dacite.types import is_generic_collection, extract_generic, is_union
 
@@ -93,6 +94,10 @@ def gather_types(types: Iterable[Type]) -> Set[Type]:
         # t = t if inspect.isclass(t) else type(t)  # Ensure that passed value is a class
         if is_generic_collection(t) or is_union(t):
             all_types.update(gather_types(extract_generic(t)))
+        elif is_dataclass(t):
+            # TODO: Could get some infinite recursion here. Maybe track visited types?
+            field_types = get_type_hints(t).values()
+            all_types.update(gather_types(field_types))
         else:
             all_types.add(t)
     return all_types
