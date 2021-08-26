@@ -6,7 +6,7 @@ from math import ceil
 from pathlib import Path
 from queue import Queue
 from threading import Thread
-from typing import Iterable, TypeVar, Generic, List, Optional, Sized, Generator
+from typing import Iterable, TypeVar, Generic, List, Optional, Sized, Generator, Union
 
 import numpy as np
 
@@ -39,6 +39,41 @@ class RandomAccessDataLoader(Iterable):
     @abstractmethod
     def __len__(self):
         pass
+
+    def view(self, indices: Union[slice, List[int]]) -> 'RandomAccessDataLoaderView':
+        return RandomAccessDataLoaderView(self, indices)
+
+
+class RandomAccessDataLoaderView(RandomAccessDataLoader):
+    """
+    Provides simple means of changing the iteration over a dataloader without copying the underlying data.
+    """
+
+    def __init__(self, dataloader: RandomAccessDataLoader, indices: Union[slice, List[int]]):
+        """
+        Parameters
+        ----------
+            dataloader: the underlying dataloader which is viewed at
+            indices: the indices of the respective elements that will be used by the dataloader view. When the view
+                is iterated over, the order of passed indices will be used.
+        """
+
+        self._dataloader = dataloader
+        if isinstance(indices, slice):
+            self._indices = range(len(self._dataloader))[indices]
+        elif isinstance(indices, list):
+            self._indices = indices
+        else:
+            raise ValueError(f"view indices must be sice or list not {type(indices)}")
+
+    def __iter__(self):
+        return (self._dataloader[idx] for idx in self._indices)
+
+    def __getitem__(self, idx: int):
+        return self._dataloader[self._indices[idx]]
+
+    def __len__(self):
+        return len(self._indices)
 
 
 class BaseDataManager(Generic[SampleType, ConfigType, StatisticsType], ArtifactManager):
