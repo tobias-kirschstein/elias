@@ -245,6 +245,9 @@ class Config(ABC):
             else:
                 # Use the Class Mapping as a lookup to get the actual sub class that should be instantiated
                 class_mapping = data_sub_class_type.get_mapping()
+                assert abstract_dataclass_values['type'] in class_mapping, \
+                    f"Could not find specified type {abstract_dataclass_values['type']} " \
+                    f"in class mapping of {data_sub_class_type}"
                 sub_class = class_mapping[abstract_dataclass_values['type']]
 
             # Delete the type attribute from the JSON input as it is implicitly defined
@@ -257,9 +260,10 @@ class Config(ABC):
         dacite_config = dacite.Config(
             cast=cls._define_casts(),
             type_hooks={
+                # Use Lambda closure (i=i) to ensure data_sub_class_type is copied for each lambda
                 abstract_dataclass:
-                    lambda abstract_dataclass_values: instantiate_adc_with_sub_class(abstract_dataclass_values,
-                                                                                     data_sub_class_type)
+                    lambda abstract_dataclass_values, data_sub_class_type=data_sub_class_type:
+                    instantiate_adc_with_sub_class(abstract_dataclass_values, data_sub_class_type)
                 for abstract_dataclass, data_sub_class_type
                 in zip(abstract_dataclasses, data_sub_class_types)})
 

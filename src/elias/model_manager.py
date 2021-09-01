@@ -46,7 +46,7 @@ class ModelManager(ABC, Generic[
         pass
 
     # TODO: how do we want to have the Checkpoint Manager?
-    def load_checkpoint(self, checkpoint_name: str, map_location=None) -> ModelType:
+    def load_checkpoint(self, checkpoint_name: Union[str, int], map_location=None) -> ModelType:
         # TODO: add assertion for map_location
         if checkpoint_name in {'latest', 'last'}:
             checkpoint_name = -1
