@@ -9,6 +9,7 @@ from elias.config import Config
 from elias.fs import list_file_numbering, generate_run_name, ensure_directory_exists_for_file
 from elias.generic import get_type_var_instantiation
 
+# TODO: Rename Train Config -> Optimization Config
 ModelConfigType = TypeVar('ModelConfigType', bound=Config)
 TrainConfigType = TypeVar('TrainConfigType', bound=Config)
 DatasetConfigType = TypeVar('DatasetConfigType', bound=Config)

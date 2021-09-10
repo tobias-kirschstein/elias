@@ -15,6 +15,7 @@ from dacite.dataclasses import get_fields
 
 from elias.generic import get_type_var_instantiation, gather_types, is_type_var_instantiated
 
+# TODO: Implement Dict or_else() method
 
 # =========================================================================
 # Better Enum handling for persistable config objects
@@ -190,6 +191,8 @@ class Config(ABC):
             a list of types for which explicit conversion is initiated whenever this Config dataclass is instantiated
         """
 
+        # TODO: Can we automatically cast 'None' to None?
+
         casts = []
         field_types = get_type_hints(cls).values()
         # Find all mentioned types in the dataclass definition (even those mentioned as generics)
@@ -245,8 +248,8 @@ class Config(ABC):
             else:
                 # Use the Class Mapping as a lookup to get the actual sub class that should be instantiated
                 class_mapping = data_sub_class_type.get_mapping()
-                assert abstract_dataclass_values['type'] in class_mapping, \
-                    f"Could not find specified type {abstract_dataclass_values['type']} " \
+                assert abstract_dataclass_values['type'].upper() in class_mapping, \
+                    f"Could not find specified type `{abstract_dataclass_values['type']}` " \
                     f"in class mapping of {data_sub_class_type}"
                 sub_class = class_mapping[abstract_dataclass_values['type']]
 
@@ -255,17 +258,19 @@ class Config(ABC):
 
             return sub_class.from_json(abstract_dataclass_values)
 
+        type_hooks = {
+            # Use Lambda closure (i=i) to ensure data_sub_class_type is copied for each lambda
+            abstract_dataclass:
+                lambda abstract_dataclass_values, data_sub_class_type=data_sub_class_type:
+                instantiate_adc_with_sub_class(abstract_dataclass_values, data_sub_class_type)
+            for abstract_dataclass, data_sub_class_type
+            in zip(abstract_dataclasses, data_sub_class_types)}
+
         # Register type hooks to replace every single AbstractDataClass with the respective subclass hinted by the
         # 'type' attribute
         dacite_config = dacite.Config(
             cast=cls._define_casts(),
-            type_hooks={
-                # Use Lambda closure (i=i) to ensure data_sub_class_type is copied for each lambda
-                abstract_dataclass:
-                    lambda abstract_dataclass_values, data_sub_class_type=data_sub_class_type:
-                    instantiate_adc_with_sub_class(abstract_dataclass_values, data_sub_class_type)
-                for abstract_dataclass, data_sub_class_type
-                in zip(abstract_dataclasses, data_sub_class_types)})
+            type_hooks=type_hooks)
 
         # backward_cls = type(cls.__name__, cls.__bases__, dict(cls.__dict__))
         #

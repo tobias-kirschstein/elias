@@ -40,8 +40,22 @@ class RandomAccessDataLoader(Iterable):
     def __len__(self):
         pass
 
-    def view(self, indices: Union[slice, List[int]]) -> 'RandomAccessDataLoaderView':
-        return RandomAccessDataLoaderView(self, indices)
+    def view(self, indices: Union[slice, List[int]], exclude: bool = False) -> 'RandomAccessDataLoaderView':
+        """
+        Provides a proxy data manager that will only iterate over the given indices.
+        If `exclude` is set the proxy data manager will access all elements except those specified by `indices`
+
+        Parameters
+        ----------
+            indices: Indices to include/exclude in the proxy data manager
+            exclude: whether the specified indices should be included or excluded
+
+        Returns
+        -------
+            A proxy data manager
+        """
+
+        return RandomAccessDataLoaderView(self, indices, exclude=exclude)
 
 
 class RandomAccessDataLoaderView(RandomAccessDataLoader):
@@ -49,7 +63,7 @@ class RandomAccessDataLoaderView(RandomAccessDataLoader):
     Provides simple means of changing the iteration over a dataloader without copying the underlying data.
     """
 
-    def __init__(self, dataloader: RandomAccessDataLoader, indices: Union[slice, List[int]]):
+    def __init__(self, dataloader: RandomAccessDataLoader, indices: Union[slice, List[int]], exclude: bool = False):
         """
         Parameters
         ----------
@@ -60,11 +74,23 @@ class RandomAccessDataLoaderView(RandomAccessDataLoader):
 
         self._dataloader = dataloader
         if isinstance(indices, slice):
-            self._indices = range(len(self._dataloader))[indices]
+            ranged_indices = range(len(self._dataloader))[indices]
+            # TODO: DataLoader can only be iterated over once
+            if exclude:
+                ranged_indices = set(ranged_indices)
+                self._indices = (idx for idx in range(len(self._dataloader)) if idx not in ranged_indices)
+            else:
+                self._indices = ranged_indices
         elif isinstance(indices, list):
-            self._indices = indices
+            assert max(indices) < len(self._dataloader), \
+                f"Cannot create view with index {max(indices)} for data loader with length {len(self._dataloader)}"
+            if exclude:
+                indices = set(indices)
+                self._indices = [idx for idx in range(len(self._dataloader)) if idx not in indices]
+            else:
+                self._indices = indices
         else:
-            raise ValueError(f"view indices must be sice or list not {type(indices)}")
+            raise ValueError(f"view indices must be slice or list not {type(indices)}")
 
     def __iter__(self):
         return (self._dataloader[idx] for idx in self._indices)
