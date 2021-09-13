@@ -82,7 +82,7 @@ class RandomAccessDataLoaderView(RandomAccessDataLoader):
             else:
                 self._indices = ranged_indices
         elif isinstance(indices, list):
-            assert max(indices) < len(self._dataloader), \
+            assert not indices or max(indices) < len(self._dataloader), \
                 f"Cannot create view with index {max(indices)} for data loader with length {len(self._dataloader)}"
             if exclude:
                 indices = set(indices)
