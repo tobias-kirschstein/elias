@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import functools
 import inspect
-import types
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, asdict, fields, field, InitVar, _FIELDS
+from dataclasses import dataclass, asdict, fields, field
 from enum import Enum, EnumMeta, auto
 from pydoc import locate
 from typing import List, Tuple, Any, Type, get_type_hints, Generic, TypeVar, Dict
@@ -14,6 +12,7 @@ from dacite import from_dict
 from dacite.dataclasses import get_fields
 
 from elias.generic import get_type_var_instantiation, gather_types, is_type_var_instantiated
+
 
 # TODO: Implement Dict or_else() method
 
@@ -197,7 +196,7 @@ class Config(ABC):
         field_types = get_type_hints(cls).values()
         # Find all mentioned types in the dataclass definition (even those mentioned as generics)
         for field_type in gather_types(field_types):
-            if issubclass(field_type, Enum):
+            if inspect.isclass(field_type) and issubclass(field_type, Enum):
                 casts.append(field_type)
 
         return casts

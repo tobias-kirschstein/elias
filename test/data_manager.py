@@ -4,7 +4,7 @@ from typing import Generator
 
 from elias.data_manager import RandomAccessDataLoader, CombinedRandomAccessDataLoader, IterableDataLoader, \
     CombinedIterableDataLoader, CombinedIterableStopCriterionAnyEmpty, CombinedIterableStopCriterionSpecificEmpty, \
-    BaseDataManager
+    BaseDataManager, _T
 
 
 class ListRADL(RandomAccessDataLoader):
@@ -12,8 +12,8 @@ class ListRADL(RandomAccessDataLoader):
     def __init__(self, data: list):
         self._data = data
 
-    def __getitem__(self, item):
-        return self._data[item]
+    def _get_single_item(self, idx: int) -> _T:
+        return self._data[idx]
 
     def __len__(self):
         return len(self._data)

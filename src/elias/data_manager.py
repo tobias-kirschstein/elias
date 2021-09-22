@@ -1,12 +1,11 @@
 import random
 from abc import abstractmethod, ABC
 from asyncio import Event
-from collections import Iterator
 from math import ceil
 from pathlib import Path
 from queue import Queue
 from threading import Thread
-from typing import Iterable, TypeVar, Generic, List, Optional, Sized, Generator, Union
+from typing import Iterable, TypeVar, Generic, List, Optional, Sized, Generator, Union, Iterator
 
 import numpy as np
 
@@ -19,6 +18,7 @@ from elias.timing import Timing
 ConfigType = TypeVar('ConfigType', bound=Config)
 StatisticsType = TypeVar('StatisticsType', bound=Config)
 SampleType = TypeVar('SampleType')
+_T = TypeVar('_T')
 
 
 class IterableDataLoader(ABC):
@@ -27,20 +27,48 @@ class IterableDataLoader(ABC):
         pass
 
 
-class RandomAccessDataLoader(Iterable):
+class RandomAccessDataLoader(Iterable[_T]):
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[_T]:
         return (self[idx] for idx in range(len(self)))
 
+    def __getitem__(self, idx: Union[int, slice]) -> Union[_T, List[_T]]:
+        if isinstance(idx, slice):
+            return self.get_slice(idx)
+        elif isinstance(idx, int):
+            return self._get_single_item(idx)
+        else:
+            try:
+                idx_int = int(idx)
+                return self._get_single_item(idx_int)
+            except TypeError:
+                raise ValueError(f"Unsupported index type passed to __getitem__: {type(idx)}")
+
     @abstractmethod
-    def __getitem__(self, item):
+    def __len__(self) -> int:
         pass
 
     @abstractmethod
-    def __len__(self):
+    def _get_single_item(self, idx: int) -> _T:
         pass
 
-    def view(self, indices: Union[slice, List[int]], exclude: bool = False) -> 'RandomAccessDataLoaderView':
+    def get_slice(self, index_slice: slice) -> List[_T]:
+        """
+        Retrieves the specified slice from the dataloader. As opposed to `view()`, the items are not lazyly loaded but
+        directly retrieved.
+
+        Parameters
+        ----------
+            index_slice: The indices (in form of a slice) to retrieve
+
+        Returns
+        -------
+            a list containing the requested items
+        """
+
+        return [self[idx] for idx in range(*index_slice.indices(len(self)))]
+
+    def view(self, indices: Union[slice, List[int]], exclude: bool = False) -> 'RandomAccessDataLoaderView[_T]':
         """
         Provides a proxy data manager that will only iterate over the given indices.
         If `exclude` is set the proxy data manager will access all elements except those specified by `indices`
@@ -58,12 +86,12 @@ class RandomAccessDataLoader(Iterable):
         return RandomAccessDataLoaderView(self, indices, exclude=exclude)
 
 
-class RandomAccessDataLoaderView(RandomAccessDataLoader):
+class RandomAccessDataLoaderView(RandomAccessDataLoader[_T]):
     """
     Provides simple means of changing the iteration over a dataloader without copying the underlying data.
     """
 
-    def __init__(self, dataloader: RandomAccessDataLoader, indices: Union[slice, List[int]], exclude: bool = False):
+    def __init__(self, dataloader: RandomAccessDataLoader[_T], indices: Union[slice, List[int]], exclude: bool = False):
         """
         Parameters
         ----------
@@ -92,13 +120,13 @@ class RandomAccessDataLoaderView(RandomAccessDataLoader):
         else:
             raise ValueError(f"view indices must be slice or list not {type(indices)}")
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[_T]:
         return (self._dataloader[idx] for idx in self._indices)
 
-    def __getitem__(self, idx: int):
+    def _get_single_item(self, idx: int) -> _T:
         return self._dataloader[self._indices[idx]]
 
-    def __len__(self):
+    def __len__(self) -> _T:
         return len(self._indices)
 
 
@@ -111,7 +139,8 @@ class BaseDataManager(Generic[SampleType, ConfigType, StatisticsType], ArtifactM
         - ``stats.json``: Contains statistics of the dataset that can only be obtained by a potentially costly iteration over the full dataset
     """
 
-    def __init__(self, data_location: str,
+    def __init__(self,
+                 data_location: str,
                  shuffle: bool = False,
                  dataset_slice_prefix: str = None,
                  dataset_slice_suffix: str = None,
@@ -134,6 +163,8 @@ class BaseDataManager(Generic[SampleType, ConfigType, StatisticsType], ArtifactM
 
         Type Vars
         ---------
+            SampleType:
+                The type of samples being returned by this data manager
             ConfigType:
                 The class of the dataset configuration (stored in ``config.json``) which is assumed to be a dataclass
                 subclassing :class:`elias.config.Config`. :meth:`save_config` and :meth:`load_config` take/retrieve the
@@ -154,7 +185,7 @@ class BaseDataManager(Generic[SampleType, ConfigType, StatisticsType], ArtifactM
         self._statistics_cls = get_type_var_instantiation(self, StatisticsType)
 
     @staticmethod
-    def to_batches(generator: Iterable, batch_size: int, lazy: bool = False) -> Generator[List[SampleType], None, None]:
+    def to_batches(generator: Iterable[_T], batch_size: int, lazy: bool = False) -> Generator[List[_T], None, None]:
         """
         Lazyly evaluated batch-wise loading
         """
@@ -194,7 +225,7 @@ class BaseDataManager(Generic[SampleType, ConfigType, StatisticsType], ArtifactM
                 yield batch
 
     @staticmethod
-    def batchify_tensor(tensor, batch_size: int) -> Iterable:
+    def batchify_tensor(tensor, batch_size: int) -> Iterator:
         try:
             n_samples = len(tensor)
         except Exception:
@@ -211,7 +242,7 @@ class BaseDataManager(Generic[SampleType, ConfigType, StatisticsType], ArtifactM
             else:
                 yield tensor[i_batch * batch_size: (i_batch + 1) * batch_size]
 
-    def _lazy_load_slices(self) -> Iterable[str]:
+    def _lazy_load_slices(self) -> Iterator[str]:
         """
         Private generator for providing paths to dataset slices one by one. Implements shuffling of dataset slices.
         """
@@ -238,7 +269,7 @@ class BaseDataManager(Generic[SampleType, ConfigType, StatisticsType], ArtifactM
 
         return dataset_slice_path
 
-    def read(self, batch_size: int = 1) -> Iterable[SampleType]:
+    def read(self, batch_size: int = 1) -> Iterator[SampleType]:
         return self.to_batches(self, batch_size)
 
     def load_config(self) -> ConfigType:
@@ -260,15 +291,19 @@ class BaseDataManager(Generic[SampleType, ConfigType, StatisticsType], ArtifactM
         pass
 
     @abstractmethod
-    def __iter__(self):
+    def __iter__(self) -> Iterator[SampleType]:
         pass
 
 
-class IterableDataManager(Iterable, BaseDataManager[SampleType, ConfigType, StatisticsType], ABC):
+class IterableDataManager(Iterable[SampleType],
+                          BaseDataManager[SampleType, ConfigType, StatisticsType],
+                          ABC):
     pass
 
 
-class RandomAccessDataManager(RandomAccessDataLoader, BaseDataManager[SampleType, ConfigType, StatisticsType], ABC):
+class RandomAccessDataManager(RandomAccessDataLoader[SampleType],
+                              BaseDataManager[SampleType, ConfigType, StatisticsType],
+                              ABC):
     pass
 
 
@@ -300,11 +335,11 @@ class CombinedIterableStopCriterionSpecificEmpty(CombinedIterableStopCriterion):
         return just_depleted_dl_idx == self._specific_dl_idx
 
 
-class CombinedIterableDataLoader(Iterable):
+class CombinedIterableDataLoader(Iterable[_T]):
     # TODO: Add capabilities for steering how iterables are traversed when shuffle=False
 
     def __init__(self,
-                 data_loaders: List[Iterable],
+                 data_loaders: List[Iterable[_T]],
                  shuffle: bool = False,
                  sample_weights: Optional[List[float]] = None,
                  stop_criterion: CombinedIterableStopCriterion = CombinedIterableStopCriterionAllEmpty(),
@@ -354,7 +389,7 @@ class CombinedIterableDataLoader(Iterable):
     def save(self, data, **kwargs):
         raise Exception('CombinedDataManager cannot save')
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[_T]:
         return CombinedIterableDataLoader.Iterator([iter(data_manager) for data_manager in self._data_loaders],
                                                    self._sample_weights,
                                                    self._stop_criterion,
@@ -362,7 +397,8 @@ class CombinedIterableDataLoader(Iterable):
 
     class Iterator:
 
-        def __init__(self, iterators: List[Iterator],
+        def __init__(self,
+                     iterators: List[Iterator[_T]],
                      sample_weights: Optional[np.array],
                      stop_criterion: CombinedIterableStopCriterion,
                      return_dl_idx: bool):
@@ -373,7 +409,7 @@ class CombinedIterableDataLoader(Iterable):
 
             self._identifiers = list(range(len(iterators)))
 
-        def __next__(self):
+        def __next__(self) -> _T:
             if len(self._identifiers) == 0:
                 raise StopIteration()
 
@@ -401,9 +437,9 @@ class CombinedIterableDataLoader(Iterable):
                     return next(self)
 
 
-class CombinedRandomAccessDataLoader(RandomAccessDataLoader):
+class CombinedRandomAccessDataLoader(RandomAccessDataLoader[_T]):
 
-    def __init__(self, data_loaders: List[RandomAccessDataLoader], shuffle=False):
+    def __init__(self, data_loaders: List[RandomAccessDataLoader[_T]], shuffle=False):
         # TODO: sample_weights
         self._data_loaders = data_loaders
         self._shuffle = shuffle
@@ -412,10 +448,10 @@ class CombinedRandomAccessDataLoader(RandomAccessDataLoader):
             self._shuffled_indices = list(range(len(self)))
             np.random.shuffle(self._shuffled_indices)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[_T]:
         return (self[idx] for idx in range(len(self)))
 
-    def __getitem__(self, idx: int):
+    def _get_single_item(self, idx: int) -> _T:
         assert -len(self) <= idx < len(
             self), f"Index {idx} is out of bounds for combined data loader of size {len(self)}"
         if self._shuffle:
@@ -426,7 +462,7 @@ class CombinedRandomAccessDataLoader(RandomAccessDataLoader):
 
         return dl_idx, sample
 
-    def __len__(self):
+    def __len__(self) -> int:
         return sum([len(data_loader) for data_loader in self._data_loaders])
 
     def _get_dl_idx_for_sample(self, idx: int):
@@ -444,7 +480,7 @@ class CombinedRandomAccessDataLoader(RandomAccessDataLoader):
 
 
 # TODO: revise doc
-class BufferedDataLoader(Iterable):
+class BufferedDataLoader(Iterable[_T]):
     """
     Wrapper class for arbitrary data managers that preloads samples in the background and provides asynchroneous saving.
     Useful in multiprocessing settings where we can have the main process preloading data while other processes do the
@@ -456,7 +492,7 @@ class BufferedDataLoader(Iterable):
 
     QUEUE_END_MSG = 'DONE'  # A special message that is used for internal queues to signalize that the producer thread is done
 
-    def __init__(self, data_loader: Iterable, size_load_buffer=5000):
+    def __init__(self, data_loader: Iterable[_T], size_load_buffer=5000):
         """
         :param data_manager: can be an arbitrary data manager that supports iterating over samples and saving dataset files
         :param size_load_buffer: specifies how many SAMPLES will be prefetched from data_manager
@@ -467,7 +503,7 @@ class BufferedDataLoader(Iterable):
         self._load_worker = None  # Will be initialized upon obtaining an iterator
         self._stop_event = Event()
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[_T]:
         """
         Initializes a worker for prefetching data. The worker will start populating the internal queue once an iterator
         is created. To avoid spawning multiple workers, one can only have one iterator at a time.
@@ -479,7 +515,7 @@ class BufferedDataLoader(Iterable):
         self._load_worker.start()
         return BufferedDataLoader.Iterator(self)
 
-    def __len__(self):
+    def __len__(self) -> int:
         try:
             if isinstance(self._data_loader, Sized):
                 return len(self._data_loader)
@@ -488,12 +524,12 @@ class BufferedDataLoader(Iterable):
 
         raise TypeError("Underlying dataloader did not specify len()")
 
-    class Iterator(Iterator):
+    class Iterator(Iterator[_T]):
 
         def __init__(self, buffered_data_loader):
             self._buffered_data_loader: BufferedDataLoader = buffered_data_loader
 
-        def __next__(self):
+        def __next__(self) -> _T:
             """
             Reads from the internal buffer and only blocks when it is empty. In this case, it might help to increase the
             size of the internal buffer via size_load_buffer

@@ -56,7 +56,7 @@ def extract_file_numbering(directory: str, regex: str) -> List[Tuple[int, str]]:
 
     assert r"(-?\d+)" in regex, r"(-?\d+) has to appear in passed regex exactly once"
     regex = re.compile(regex)
-    file_names = [Path(file_name).stem for file_name in glob(f"{directory}/*")]
+    file_names = [file.name if file.is_dir() else file.stem for file in Path(directory).iterdir()]
     file_names_and_numbering = [(int(regex.search(file_name).group(1)), file_name)
                                 for file_name in file_names if regex.match(file_name)]
     file_names_and_numbering = sorted(file_names_and_numbering, key=lambda x: x[0])
