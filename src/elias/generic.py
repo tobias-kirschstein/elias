@@ -73,10 +73,6 @@ def get_type_var_instantiations(obj_or_cls: Union[object, Type, _GenericAlias]):
         # Gather all typevars and their associated types of all superclasses of the passed object
         _rec_gather_generics(obj_or_cls, type_var_instantiations)
 
-    # If none of the above cases occurred, the passed object apparently was not a templated type
-    assert len(type_var_instantiations) > 0, \
-        f"Could not determine template types of `{obj_or_cls}`. Is it a generic type or instance?"
-
     return type_var_instantiations
 
 
@@ -115,6 +111,9 @@ def get_type_var_instantiation(obj_or_cls: Union[object, Type, _GenericAlias], t
     """
 
     type_var_instantiations = get_type_var_instantiations(obj_or_cls)
+    # If none of the above cases occurred, the passed object apparently was not a templated type
+    assert len(type_var_instantiations) > 0, \
+        f"Could not determine template types of `{obj_or_cls}`. Is it a generic type or instance?"
 
     # Find the specified type_var in the gathered typevars of all superclasses and return the respective template
     # instantiation

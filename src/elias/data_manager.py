@@ -5,7 +5,7 @@ from math import ceil
 from pathlib import Path
 from queue import Queue
 from threading import Thread
-from typing import Iterable, TypeVar, Generic, List, Optional, Sized, Generator, Union, Iterator
+from typing import Iterable, TypeVar, Generic, List, Optional, Sized, Generator, Union, Iterator, Set
 
 import numpy as np
 
@@ -68,7 +68,9 @@ class RandomAccessDataLoader(Iterable[_T]):
 
         return [self[idx] for idx in range(*index_slice.indices(len(self)))]
 
-    def view(self, indices: Union[slice, List[int]], exclude: bool = False) -> 'RandomAccessDataLoaderView[_T]':
+    def view(self,
+             indices: Union[slice, List[int], Set[int]],
+             exclude: bool = False) -> 'RandomAccessDataLoaderView[_T]':
         """
         Provides a proxy data manager that will only iterate over the given indices.
         If `exclude` is set the proxy data manager will access all elements except those specified by `indices`
@@ -91,32 +93,37 @@ class RandomAccessDataLoaderView(RandomAccessDataLoader[_T]):
     Provides simple means of changing the iteration over a dataloader without copying the underlying data.
     """
 
-    def __init__(self, dataloader: RandomAccessDataLoader[_T], indices: Union[slice, List[int]], exclude: bool = False):
+    def __init__(self,
+                 dataloader: RandomAccessDataLoader[_T],
+                 indices: Union[slice, List[int], Set[int]],
+                 exclude: bool = False):
         """
         Parameters
         ----------
             dataloader: the underlying dataloader which is viewed at
             indices: the indices of the respective elements that will be used by the dataloader view. When the view
                 is iterated over, the order of passed indices will be used.
+                If a set is passed, the order of indices is undefined.
         """
 
         self._dataloader = dataloader
+        n_samples = len(self._dataloader)
         if isinstance(indices, slice):
-            ranged_indices = range(len(self._dataloader))[indices]
+            ranged_indices = range(n_samples)[indices]
             # TODO: DataLoader can only be iterated over once
             if exclude:
                 ranged_indices = set(ranged_indices)
-                self._indices = (idx for idx in range(len(self._dataloader)) if idx not in ranged_indices)
+                self._indices = (idx for idx in range(n_samples) if idx not in ranged_indices)
             else:
                 self._indices = ranged_indices
-        elif isinstance(indices, list):
-            assert not indices or max(indices) < len(self._dataloader), \
-                f"Cannot create view with index {max(indices)} for data loader with length {len(self._dataloader)}"
+        elif isinstance(indices, list) or isinstance(indices, set):
+            assert not indices or max(indices) < n_samples, \
+                f"Cannot create view with index {max(indices)} for data loader with length {n_samples}"
             if exclude:
-                indices = set(indices)
-                self._indices = [idx for idx in range(len(self._dataloader)) if idx not in indices]
+                indices = indices if isinstance(indices, set) else set(indices)
+                self._indices = [idx for idx in range(n_samples) if idx not in indices]
             else:
-                self._indices = indices
+                self._indices = list(indices)
         else:
             raise ValueError(f"view indices must be slice or list not {type(indices)}")
 

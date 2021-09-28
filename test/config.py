@@ -63,7 +63,6 @@ class ConfigTest(TestCase):
         print(isinstance(ConfigTest.SuperClassType.A, ClassMapping))
 
     def test_abstract_dataclass_without_mapping(self):
-        # TODO: Fix test
 
         @dataclass
         class TestConfigWithoutMapping(Config):
