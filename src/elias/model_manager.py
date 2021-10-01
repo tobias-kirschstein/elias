@@ -2,11 +2,12 @@ import re
 from abc import ABC, abstractmethod
 from glob import glob
 from pathlib import Path
+from shutil import rmtree
 from typing import Type, TypeVar, Generic, Optional, List, Union
 
 from elias.artifact import ArtifactManager, ArtifactType
 from elias.config import Config
-from elias.fs import list_file_numbering, generate_run_name, ensure_directory_exists_for_file
+from elias.fs import list_file_numbering, generate_run_name, ensure_directory_exists
 from elias.generic import get_type_var_instantiation
 
 # TODO: Rename Train Config -> Optimization Config
@@ -151,11 +152,19 @@ class RunManager(Generic[ModelManagerType]):
     def generate_run_name(self) -> str:
         return generate_run_name(self._runs_dir, self._prefix, match_arbitrary_suffixes=True)
 
+    # TODO: Add prefix to run_name if it is passed? Otherwise it won't be listed by list_runs()
     def new_run(self, run_name: Optional[str] = None) -> ModelManagerType:
         if run_name is None:
             run_name = self.generate_run_name()
-        ensure_directory_exists_for_file(f"{self._runs_dir}/{run_name}/")
+        ensure_directory_exists(f"{self._runs_dir}/{run_name}")
         return self.get_model_manager(run_name)
+
+    def delete_run(self, run_name: str):
+        run_folder = f"{self._runs_dir}/{run_name}"
+        assert Path(run_folder).exists(), f"Cannot delete run {run_name}. It does not exist"
+        assert Path(run_folder).is_dir(), f"{run_folder} is not a folder"
+
+        rmtree(run_folder)
 
     @abstractmethod
     def get_model_manager(self, run_name) -> ModelManagerType:

@@ -2,7 +2,7 @@ import os
 import re
 from glob import glob
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 
 def ensure_file_ending(file: str, ending: str) -> str:
@@ -19,6 +19,7 @@ def ensure_directory_exists_for_file(path: str):
     ----------
     path: path to the file or folder for which an underlying directory structure will be ensured
     """
+
     Path(os.path.dirname(path)).mkdir(parents=True, exist_ok=True)
 
 
@@ -34,7 +35,11 @@ def ensure_directory_exists(path: str):
     Path(path).mkdir(parents=True, exist_ok=True)
 
 
-def extract_file_numbering(directory: str, regex: str) -> List[Tuple[int, str]]:
+# TODO: Currently, it is not possible to directly specify a file ending. They are ignored due to file.stem
+def extract_file_numbering(directory: str,
+                           regex: str,
+                           return_only_numbering: bool = False,
+                           return_only_file_names: bool = False) -> List[Union[Tuple[int, str], int, str]]:
     r"""
     Finds all (numbered) files/folder in the specified directory that match the regex and returns them in sorted fashion
     according to the number in the file/folder name. The numbering of the file/folder will also be returned
@@ -46,14 +51,22 @@ def extract_file_numbering(directory: str, regex: str) -> List[Tuple[int, str]]:
 
     Parameters
     ----------
-    directory: in which directory to search for matching files/folders
-    regex: specifies which file/folder names should be filtered and where in their name the numbering occurs
+        directory:
+            in which directory to search for matching files/folders
+        regex:
+            specifies which file/folder names should be filtered and where in their name the numbering occurs
+        return_only_numbering:
+            whether to only return the numbering of the matched files
+        return_only_file_names:
+            whether to only return the name of the matched files
 
     Returns
     -------
     A sorted list of (numbering, file name) pairs for each matching file/folder in the passed directory
     """
 
+    assert not (return_only_numbering and return_only_file_names), \
+        "Can only set one of return_only_numbering and return_only_file_names"
     assert r"(-?\d+)" in regex, r"(-?\d+) has to appear in passed regex exactly once"
     regex = re.compile(regex)
     file_names = [file.name if file.is_dir() else file.stem for file in Path(directory).iterdir()]
@@ -61,7 +74,12 @@ def extract_file_numbering(directory: str, regex: str) -> List[Tuple[int, str]]:
                                 for file_name in file_names if regex.match(file_name)]
     file_names_and_numbering = sorted(file_names_and_numbering, key=lambda x: x[0])
 
-    return file_names_and_numbering
+    if return_only_numbering:
+        return [file_name_and_numbering[0] for file_name_and_numbering in file_names_and_numbering]
+    elif return_only_file_names:
+        return [file_name_and_numbering[1] for file_name_and_numbering in file_names_and_numbering]
+    else:
+        return file_names_and_numbering
 
 
 # TODO: find some way to specify string format in a generic way with a single place for a number
