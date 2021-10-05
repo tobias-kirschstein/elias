@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, asdict, fields, field
 from enum import Enum, EnumMeta, auto
 from pydoc import locate
-from typing import List, Tuple, Any, Type, get_type_hints, Generic, TypeVar, Dict
+from typing import List, Tuple, Any, Type, get_type_hints, Generic, TypeVar, Dict, Iterator
 
 import dacite
 from dacite import from_dict
@@ -13,12 +13,13 @@ from dacite.dataclasses import get_fields
 
 from elias.generic import get_type_var_instantiation, gather_types, is_type_var_instantiated
 
-
 # TODO: Implement Dict or_else() method
 
 # =========================================================================
 # Better Enum handling for persistable config objects
 # =========================================================================
+
+_T_Enum = TypeVar('_T_Enum', bound=Enum)
 
 
 class NamedEnumMeta(EnumMeta):
@@ -30,6 +31,9 @@ class NamedEnumMeta(EnumMeta):
         if isinstance(value, str):
             value = cls.from_name(value).value
         return super().__call__(value, *args, **kw)
+
+    def __iter__(self: _T_self) -> Iterator[_T_self]:
+        return super(NamedEnumMeta, self).__iter__()
 
 
 class NamedEnum(Enum, metaclass=NamedEnumMeta):
@@ -72,6 +76,11 @@ class StringEnum(str, NamedEnum):
     def _generate_next_value_(name, start, count, last_values):
         return name
 
+    def __iter__(self: _T_Enum) -> Iterator[_T_Enum]:
+        # Additional type hinting, as StringEnum inherits from str and PyCharm's type checker otherwise thinks
+        # iterating over the enum yields strings
+        return super(StringEnum, self).__iter__()
+
 
 class ClassMapping(StringEnum):
     """
@@ -101,9 +110,17 @@ class Config(ABC):
         d = dict()
         for key, value in items:
             if isinstance(value, Enum):
-                d[key] = value.value
-            else:
-                d[key] = value
+                value = value.value  # Use the Enum's value as representation for the value
+            elif isinstance(value, dict):
+                # If a Config defines a member of type Dict it won't be unrolled by the dataclass asdict() method
+                # Hence, unroll it manually here. Enums are fine for both keys and values, but they have to be
+                # serialized
+                value = {
+                    k.value if isinstance(k, Enum) else k:
+                        v.value if isinstance(v, Enum) else v
+                    for k, v in value.items()}
+
+            d[key] = value
         return d
 
     def to_json(self) -> dict:

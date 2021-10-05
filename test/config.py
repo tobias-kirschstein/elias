@@ -1,9 +1,9 @@
 from dataclasses import dataclass
-from enum import auto
+from enum import auto, Enum
 from typing import Dict, Type
 from unittest import TestCase
 
-from elias.config import AbstractDataclass, Config, ClassMapping
+from elias.config import AbstractDataclass, Config, ClassMapping, StringEnum
 
 
 class ConfigTest(TestCase):
@@ -63,7 +63,6 @@ class ConfigTest(TestCase):
         print(isinstance(ConfigTest.SuperClassType.A, ClassMapping))
 
     def test_abstract_dataclass_without_mapping(self):
-
         @dataclass
         class TestConfigWithoutMapping(Config):
             test: ConfigTest.SuperClassWithoutMapping
@@ -116,3 +115,49 @@ class ConfigTest(TestCase):
     #
     #     new_config = TestConfig()
 
+    def test_config_dict_with_enums(self):
+        class VanillaEnum(Enum):
+            A = auto()
+            B = auto()
+
+        class TestStringEnum(StringEnum):
+            A = auto()
+            B = auto()
+
+        @dataclass
+        class ConfigWithEnumDict(Config):
+            d_regular_key: Dict[VanillaEnum, int]
+            d_regular_value: Dict[int, VanillaEnum]
+            d_regular_key_value: Dict[VanillaEnum, VanillaEnum]
+
+            d_string_key: Dict[TestStringEnum, int]
+            d_string_value: Dict[int, TestStringEnum]
+            d_string_key_value: Dict[TestStringEnum, TestStringEnum]
+
+            d_regular_string: Dict[VanillaEnum, TestStringEnum]
+            d_string_regular: Dict[TestStringEnum, VanillaEnum]
+
+        d_regular_key = {VanillaEnum.A: 1, VanillaEnum.B: 2}
+        d_regular_value = {1: VanillaEnum.A, 2: VanillaEnum.B}
+        d_regular_key_value = {VanillaEnum.A: VanillaEnum.A, VanillaEnum.B: VanillaEnum.A}
+
+        d_string_key = {TestStringEnum.A: 1, TestStringEnum.B: 2}
+        d_string_value = {1: TestStringEnum.A, 2: TestStringEnum.B}
+        d_string_key_value = {TestStringEnum.A: TestStringEnum.A, TestStringEnum.B: TestStringEnum.A}
+
+        d_regular_string = {VanillaEnum.A: TestStringEnum.A, VanillaEnum.B: TestStringEnum.A}
+        d_string_regular = {TestStringEnum.A: VanillaEnum.A, TestStringEnum.B: VanillaEnum.A}
+
+        c = ConfigWithEnumDict(d_regular_key, d_regular_value, d_regular_key_value,
+                               d_string_key, d_string_value, d_string_key_value,
+                               d_regular_string, d_string_regular)
+
+        c_serialized = c.to_json()
+        for serialized_enum_dict in c_serialized.values():
+            for key, value in serialized_enum_dict.items():
+                # All keys and values should have been converted to their str or int representations
+                self.assertTrue(isinstance(key, str) or isinstance(key, int))
+                self.assertTrue(isinstance(value, str) or isinstance(value, int))
+
+        c_reconstructed = c.from_json(c_serialized)
+        self.assertEqual(c_reconstructed, c)
