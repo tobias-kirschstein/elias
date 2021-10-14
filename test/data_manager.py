@@ -174,4 +174,20 @@ class DataManagerTest(unittest.TestCase):
         self.assertEqual(batched_tensor[1], list(range(8, 16)))
         self.assertEqual(batched_tensor[2], list(range(16, 20)))
 
+    def test_combined_iterable_alternating_sampling(self):
+        dl_1 = ListIDL(list(range(0, 5)))
+        dl_2 = ListIDL(list(range(10, 20)))
+
+        combined_dl = CombinedIterableDataLoader([dl_1, dl_2], alternating_sampling=True)
+        i = 0
+        for i, (identifier, value) in enumerate(combined_dl):
+            if i < 10:
+                if i % 2 == 0:
+                    self.assertEqual(value, int(i / 2))
+                else:
+                    self.assertEqual(value, 10 + int(i / 2))
+            else:
+                self.assertEqual(value, i + 5)
+        self.assertEqual(i, 14)  # After looping through the data loader we should have 5 elements
+
 

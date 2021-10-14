@@ -344,12 +344,14 @@ class CombinedIterableStopCriterionSpecificEmpty(CombinedIterableStopCriterion):
 
 class CombinedIterableDataLoader(Iterable[_T]):
     # TODO: Add capabilities for steering how iterables are traversed when shuffle=False
+    # TODO: Add generic Sampling strategy
 
     def __init__(self,
                  data_loaders: List[Iterable[_T]],
                  shuffle: bool = False,
                  sample_weights: Optional[List[float]] = None,
                  stop_criterion: CombinedIterableStopCriterion = CombinedIterableStopCriterionAllEmpty(),
+                 alternating_sampling: bool = False,
                  return_dl_idx: bool = True):
         """
         Combines the specified iterables into a single iterable dataloader. Per default, the given iterables will
@@ -368,6 +370,9 @@ class CombinedIterableDataLoader(Iterable[_T]):
                 specifies under what circumstances the combined dataloader should stop. E.g., whether it should exhaust
                 all given dataloaders, stop when any of the iterables is empty or continue until a specific dataloader
                 is empty
+            alternating_sampling:
+                Overrides `sample_weights`. If set to `True`, provided iterators will be traversed in a round robin
+                style instead of exhausting the first before continuing with the second.
             return_dl_idx:
                 whether the returned elements of the combined dataloader should be a tuple containing the index of the
                 original dataloader and the actual element (similar to Python's enumerate()).
@@ -376,6 +381,7 @@ class CombinedIterableDataLoader(Iterable[_T]):
         self._data_loaders = data_loaders
         self._shuffle = shuffle
         self._return_dl_idx = return_dl_idx
+        self._alternating_sampling = alternating_sampling
 
         if shuffle:
             if sample_weights is None:
@@ -400,7 +406,8 @@ class CombinedIterableDataLoader(Iterable[_T]):
         return CombinedIterableDataLoader.Iterator([iter(data_manager) for data_manager in self._data_loaders],
                                                    self._sample_weights,
                                                    self._stop_criterion,
-                                                   self._return_dl_idx)
+                                                   self._return_dl_idx,
+                                                   self._alternating_sampling)
 
     class Iterator:
 
@@ -408,11 +415,14 @@ class CombinedIterableDataLoader(Iterable[_T]):
                      iterators: List[Iterator[_T]],
                      sample_weights: Optional[np.array],
                      stop_criterion: CombinedIterableStopCriterion,
-                     return_dl_idx: bool):
+                     return_dl_idx: bool,
+                     alternating_sampling: bool):
             self._iterators = iterators
             self._sample_weights = sample_weights
             self._stop_criterion = stop_criterion
             self._return_dl_idx = return_dl_idx
+            self._alternating_sampling = alternating_sampling
+            self._last_chosen_iterator_idx = -1
 
             self._identifiers = list(range(len(iterators)))
 
@@ -420,7 +430,11 @@ class CombinedIterableDataLoader(Iterable[_T]):
             if len(self._identifiers) == 0:
                 raise StopIteration()
 
-            if self._sample_weights is not None:
+            if self._alternating_sampling:
+                idx = (self._last_chosen_iterator_idx + 1) % len(self._identifiers)
+                iterator_idx = self._identifiers[idx]
+                self._last_chosen_iterator_idx = idx
+            elif self._sample_weights is not None:
                 sample_weights = self._sample_weights[self._identifiers]
                 assert sum(sample_weights) > 0, f"sample_weights (initial: {self._sample_weights}) sum to 0"
                 sample_weights /= sum(sample_weights)
@@ -437,6 +451,7 @@ class CombinedIterableDataLoader(Iterable[_T]):
                     return sample
             except StopIteration:
                 self._identifiers.remove(iterator_idx)
+                self._last_chosen_iterator_idx -= 1  # Ensure that alternating sampling will not jump over next iterator
 
                 if self._stop_criterion.should_stop(iterator_idx, self._identifiers):
                     raise StopIteration()
