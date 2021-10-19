@@ -4,7 +4,7 @@ from typing import Generator
 
 from elias.data_manager import RandomAccessDataLoader, CombinedRandomAccessDataLoader, IterableDataLoader, \
     CombinedIterableDataLoader, CombinedIterableStopCriterionAnyEmpty, CombinedIterableStopCriterionSpecificEmpty, \
-    BaseDataManager, _T
+    BaseDataManager, _T, CyclicSamplingStrategy
 
 
 class ListRADL(RandomAccessDataLoader):
@@ -190,4 +190,29 @@ class DataManagerTest(unittest.TestCase):
                 self.assertEqual(value, i + 5)
         self.assertEqual(i, 14)  # After looping through the data loader we should have 5 elements
 
+    def test_cyclic_sampling_strategy(self):
+        dl_1 = ListIDL(list(range(0, 5)))
+        dl_2 = ListIDL(list(range(30, 32)))
+        dl_3 = ListIDL(list(range(10, 20)))
 
+        combined_dl = CombinedIterableDataLoader([dl_1, dl_2, dl_3],
+                                                 sampling_strategy=CyclicSamplingStrategy([1, 2, 2, 0]))
+        i = 0
+        for i, (identifier, value) in enumerate(combined_dl):
+            if i < 8:
+                if i % 4 == 0:
+                    self.assertEqual(identifier, 1)
+                    self.assertEqual(value, 30 + int(i / 4))
+                elif i % 4 == 3:
+                    self.assertEqual(identifier, 0)
+                    self.assertEqual(value, int(i / 4))
+                else:
+                    self.assertEqual(identifier, 2)
+            else:
+                if (i - 8) % 3 == 2:
+                    self.assertEqual(identifier, 0)
+                    self.assertEqual(value, 2 + int((i - 8) / 3))
+                else:
+                    self.assertEqual(identifier, 2)
+
+        self.assertEqual(i, 16)

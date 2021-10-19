@@ -342,16 +342,142 @@ class CombinedIterableStopCriterionSpecificEmpty(CombinedIterableStopCriterion):
         return just_depleted_dl_idx == self._specific_dl_idx
 
 
-class CombinedIterableDataLoader(Iterable[_T]):
-    # TODO: Add capabilities for steering how iterables are traversed when shuffle=False
-    # TODO: Add generic Sampling strategy
+class ChoiceSampler(ABC, Iterator[int]):
 
+    def __init__(self, n_choices: int):
+        self._choices = list(range(n_choices))
+
+    def choice_exhausted(self, choice_idx: int):
+        self._choices.remove(choice_idx)
+
+    def get_remaining_choices(self) -> List[int]:
+        return self._choices
+
+
+class SamplingStrategy(ABC):
+
+    @abstractmethod
+    def create_sampler(self, n_choices: int) -> ChoiceSampler:
+        pass
+
+
+class RandomSamplingStrategy(SamplingStrategy):
+    class RandomChoiceSampler(ChoiceSampler):
+
+        def __next__(self) -> int:
+            return np.random.choice(self._choices)
+
+    def create_sampler(self, n_choices: int) -> ChoiceSampler:
+        return self.RandomChoiceSampler(n_choices)
+
+
+class WeightedSamplingStrategy(SamplingStrategy):
+    class WeightedSampler(ChoiceSampler):
+
+        def __init__(self, n_choices: int, weights: List[float]):
+            assert n_choices == len(weights), \
+                f"WeightedSamplingStrategy got {len(weights)} weights, but {n_choices} choices"
+            super(WeightedSamplingStrategy.WeightedSampler, self).__init__(n_choices)
+            weights = np.array(weights)
+
+            # Completely ignore choices that were given 0 probability
+            zero_prob_choices = weights == 0
+            weights = weights[~zero_prob_choices]
+            self._choices = [choice
+                             for choice, zero_prob_choice in zip(self._choices, zero_prob_choices)
+                             if not zero_prob_choice]
+
+            self._original_weights = weights / sum(weights)
+            self._weights = self._original_weights
+
+        def __next__(self) -> int:
+            return np.random.choice(self._choices, p=self._weights)
+
+        def choice_exhausted(self, choice_idx: int):
+            super(WeightedSamplingStrategy.WeightedSampler, self).choice_exhausted(choice_idx)
+
+            if len(self.get_remaining_choices()) == 0:
+                return
+
+            remaining_weights = self._original_weights[self._choices]
+            remaining_weights /= sum(remaining_weights)
+            assert sum(remaining_weights) > 0, f"remaining weights (initial: {self._original_weights}) sum to 0"
+
+            self._weights = remaining_weights
+
+    def __init__(self, weights: List[float]):
+        self._weights = weights
+
+    def create_sampler(self, n_choices: int) -> ChoiceSampler:
+        return self.WeightedSampler(n_choices, self._weights)
+
+
+class CyclicSamplingStrategy(SamplingStrategy):
+    class CyclicSampler(ChoiceSampler):
+
+        def __init__(self, n_choices: int, sample_sequence: List[int]):
+            assert min(sample_sequence) >= 0 and max(sample_sequence) < n_choices, \
+                f"sample sequence ({sample_sequence}) contains choices that are out of range for {n_choices} choices"
+            super().__init__(n_choices)
+            self._sample_sequence = list(sample_sequence)
+            self._current_idx = 0
+
+        def __next__(self) -> int:
+            choice = self._sample_sequence[self._current_idx]
+            self._current_idx = (self._current_idx + 1) % len(self._sample_sequence)
+            return choice
+
+        def choice_exhausted(self, choice_idx: int):
+            super(CyclicSamplingStrategy.CyclicSampler, self).choice_exhausted(choice_idx)
+
+            if len(self.get_remaining_choices()) == 0:
+                return
+
+            # 1, 2, 2, 1, 3
+            #       x
+            # remove 2
+            # 1, 1, 3
+            #    x
+
+            # Remove all occurrences of the choice from the sample sequence
+            filtered_sample_sequence = list()
+            for idx, choice in enumerate(self._sample_sequence):
+                if idx < self._current_idx:
+                    # Ensure that pointer is moved in such a way that sampling proceeds as if choice_idx didn't exist
+                    self._current_idx -= 1
+                if choice != choice_idx:
+                    filtered_sample_sequence.append(choice)
+
+            # Can happen that all choices after current_idx were deleted. Then pointer needs to get back to beginning
+            self._current_idx = self._current_idx % len(filtered_sample_sequence)
+
+            self._sample_sequence = filtered_sample_sequence
+
+
+    def __init__(self, sample_sequence: List[int]):
+        self._sample_sequence = sample_sequence
+
+    def create_sampler(self, n_choices: int) -> ChoiceSampler:
+        return self.CyclicSampler(n_choices, self._sample_sequence)
+
+
+class SequentialSamplingStrategy(SamplingStrategy):
+    class SequentialSampler(ChoiceSampler):
+        def __next__(self) -> int:
+            return self._choices[0]
+
+    def create_sampler(self, n_choices: int) -> ChoiceSampler:
+        return self.SequentialSampler(n_choices)
+
+
+class CombinedIterableDataLoader(Iterable[_T]):
     def __init__(self,
                  data_loaders: List[Iterable[_T]],
                  shuffle: bool = False,
                  sample_weights: Optional[List[float]] = None,
                  stop_criterion: CombinedIterableStopCriterion = CombinedIterableStopCriterionAllEmpty(),
                  alternating_sampling: bool = False,
+                 sampling_strategy: Optional[SamplingStrategy] = None,
                  return_dl_idx: bool = True):
         """
         Combines the specified iterables into a single iterable dataloader. Per default, the given iterables will
@@ -383,19 +509,27 @@ class CombinedIterableDataLoader(Iterable[_T]):
         self._return_dl_idx = return_dl_idx
         self._alternating_sampling = alternating_sampling
 
-        if shuffle:
+        if sampling_strategy is not None:
+            self._sampling_strategy = sampling_strategy
+        elif alternating_sampling:
+            # sample from each data loader once before repeating
+            self._sampling_strategy = CyclicSamplingStrategy(list(range(len(data_loaders))))
+        elif shuffle:
             if sample_weights is None:
                 # uniform random sampling
-                self._sample_weights = np.array([1 / len(data_loaders) for _ in range(len(data_loaders))])
+                self._sampling_strategy = RandomSamplingStrategy()
+                # self._sample_weights = np.array([1 / len(data_loaders) for _ in range(len(data_loaders))])
             else:
-                self._sample_weights = None if sample_weights is None else np.array(sample_weights) / sum(
-                    sample_weights)
+                self._sampling_strategy = WeightedSamplingStrategy(sample_weights)
+                # self._sample_weights = None if sample_weights is None else np.array(sample_weights) / sum(
+                #     sample_weights)
                 assert sample_weights is None or len(sample_weights) == len(data_loaders), \
-                    f"Need to specify as many sample weights (got {len(self._sample_weights)}) " \
+                    f"Need to specify as many sample weights (got {len(sample_weights)}) " \
                     f"as dataloaders ({len(data_loaders)})"
         else:
             assert sample_weights is None, f"shuffle has to be set, if sample_weights are used"
-            self._sample_weights = None
+            # self._sample_weights = None
+            self._sampling_strategy = SequentialSamplingStrategy()
 
         self._stop_criterion = stop_criterion
 
@@ -404,44 +538,43 @@ class CombinedIterableDataLoader(Iterable[_T]):
 
     def __iter__(self) -> Iterator[_T]:
         return CombinedIterableDataLoader.Iterator([iter(data_manager) for data_manager in self._data_loaders],
-                                                   self._sample_weights,
+                                                   self._sampling_strategy.create_sampler(len(self._data_loaders)),
                                                    self._stop_criterion,
-                                                   self._return_dl_idx,
-                                                   self._alternating_sampling)
+                                                   self._return_dl_idx)
 
     class Iterator:
 
         def __init__(self,
                      iterators: List[Iterator[_T]],
-                     sample_weights: Optional[np.array],
+                     data_loader_sampler: ChoiceSampler,
                      stop_criterion: CombinedIterableStopCriterion,
-                     return_dl_idx: bool,
-                     alternating_sampling: bool):
+                     return_dl_idx: bool):
             self._iterators = iterators
-            self._sample_weights = sample_weights
+            self._data_loader_sampler = data_loader_sampler
             self._stop_criterion = stop_criterion
             self._return_dl_idx = return_dl_idx
-            self._alternating_sampling = alternating_sampling
             self._last_chosen_iterator_idx = -1
 
-            self._identifiers = list(range(len(iterators)))
+            # self._identifiers = list(range(len(iterators)))
 
         def __next__(self) -> _T:
-            if len(self._identifiers) == 0:
+            if len(self._data_loader_sampler.get_remaining_choices()) == 0:
                 raise StopIteration()
 
-            if self._alternating_sampling:
-                idx = (self._last_chosen_iterator_idx + 1) % len(self._identifiers)
-                iterator_idx = self._identifiers[idx]
-                self._last_chosen_iterator_idx = idx
-            elif self._sample_weights is not None:
-                sample_weights = self._sample_weights[self._identifiers]
-                assert sum(sample_weights) > 0, f"sample_weights (initial: {self._sample_weights}) sum to 0"
-                sample_weights /= sum(sample_weights)
-                iterator_idx = np.random.choice(self._identifiers, p=sample_weights)
-            else:
-                # Iterate through all iterators in order
-                iterator_idx = self._identifiers[0]
+            iterator_idx = next(self._data_loader_sampler)
+
+            # if self._alternating_sampling:
+            #     idx = (self._last_chosen_iterator_idx + 1) % len(self._identifiers)
+            #     iterator_idx = self._identifiers[idx]
+            #     self._last_chosen_iterator_idx = idx
+            # elif self._sample_weights is not None:
+            #     sample_weights = self._sample_weights[self._identifiers]
+            #     assert sum(sample_weights) > 0, f"sample_weights (initial: {self._sample_weights}) sum to 0"
+            #     sample_weights /= sum(sample_weights)
+            #     iterator_idx = np.random.choice(self._identifiers, p=sample_weights)
+            # else:
+            #     # Iterate through all iterators in order
+            #     iterator_idx = self._identifiers[0]
 
             try:
                 sample = next(self._iterators[iterator_idx])
@@ -450,10 +583,10 @@ class CombinedIterableDataLoader(Iterable[_T]):
                 else:
                     return sample
             except StopIteration:
-                self._identifiers.remove(iterator_idx)
-                self._last_chosen_iterator_idx -= 1  # Ensure that alternating sampling will not jump over next iterator
-
-                if self._stop_criterion.should_stop(iterator_idx, self._identifiers):
+                # self._identifiers.remove(iterator_idx)
+                # self._last_chosen_iterator_idx -= 1  # Ensure that alternating sampling will not jump over next iterator
+                self._data_loader_sampler.choice_exhausted(iterator_idx)
+                if self._stop_criterion.should_stop(iterator_idx, self._data_loader_sampler.get_remaining_choices()):
                     raise StopIteration()
                 else:
                     return next(self)
