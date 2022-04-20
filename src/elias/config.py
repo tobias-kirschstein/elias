@@ -10,14 +10,14 @@ from typing import List, Tuple, Any, Type, get_type_hints, Generic, TypeVar, Dic
 import dacite
 from dacite import from_dict
 from dacite.dataclasses import get_fields
-
-from elias.generic import get_type_var_instantiation, gather_types, is_type_var_instantiated
+from silberstral import gather_types, is_type_var_instantiated, reveal_type_var
 
 # TODO: Implement Dict or_else() method
 
 # =========================================================================
 # Better Enum handling for persistable config objects
 # =========================================================================
+
 
 _T_Enum = TypeVar('_T_Enum', bound=Enum)
 
@@ -32,7 +32,7 @@ class NamedEnumMeta(EnumMeta):
             value = cls.from_name(value).value
         return super().__call__(value, *args, **kw)
 
-    def __iter__(self: _T_self) -> Iterator[_T_self]:
+    def __iter__(self: _T_Enum) -> Iterator[_T_Enum]:
         return super(NamedEnumMeta, self).__iter__()
 
 
@@ -248,7 +248,7 @@ class Config(ABC):
             if issubclass(field_type, AbstractDataclass):
                 abstract_dataclasses.append(field_type)
                 if is_type_var_instantiated(field_type, DataSubclassType):
-                    data_sub_class_types.append(get_type_var_instantiation(field_type, DataSubclassType))
+                    data_sub_class_types.append(reveal_type_var(field_type, DataSubclassType))
                 else:
                     data_sub_class_types.append(None)
 
@@ -391,7 +391,7 @@ class AbstractDataclass(Generic[DataSubclassType], Config):
         if is_type_var_instantiated(self, DataSubclassType):
             # This AbstractDataClass has a corresponding class mapping enum. Use the respective enum name
             # for this instance as 'type' attribute
-            data_sub_class_enum: ClassMapping = get_type_var_instantiation(self, DataSubclassType)
+            data_sub_class_enum: ClassMapping = reveal_type_var(self, DataSubclassType)
             sub_class_mapping = data_sub_class_enum.get_mapping()
             sub_class = None
             for sub_class_name, sub_class_type in sub_class_mapping.items():
@@ -440,10 +440,3 @@ def implicit(default: Any = None):
     """
 
     return field(init=False, default=default)
-
-# def deprecated(default=None):
-#     return field(default=default, repr=False, compare=False, metadata={"deprecated": True})
-#
-#
-# def backward_compatible():
-#     return field(default=None, metadata={"required": True})

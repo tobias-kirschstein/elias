@@ -2,9 +2,11 @@ import unittest
 from collections import defaultdict
 from typing import Generator
 
-from elias.data_manager import RandomAccessDataLoader, CombinedRandomAccessDataLoader, IterableDataLoader, \
-    CombinedIterableDataLoader, CombinedIterableStopCriterionAnyEmpty, CombinedIterableStopCriterionSpecificEmpty, \
-    BaseDataManager, _T, CyclicSamplingStrategy
+from elias.manager.data import BaseDataManager, _T
+from elias.data.combined import CombinedIterableDataLoader, CombinedRandomAccessDataLoader
+from elias.data.sampling import CyclicSamplingStrategy
+from elias.data.stop_criterion import CombinedIterableStopCriterionAnyEmpty, CombinedIterableStopCriterionSpecificEmpty
+from elias.data.loader import IterableDataLoader, RandomAccessDataLoader
 
 
 class ListRADL(RandomAccessDataLoader):

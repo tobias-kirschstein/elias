@@ -1,0 +1,275 @@
+import random
+from abc import abstractmethod, ABC
+from math import ceil
+from typing import Iterable, TypeVar, Generic, List, Generator, Iterator, Type, Union, Any
+
+from silberstral import reveal_type_var
+
+from elias.manager.artifact import ArtifactManager, ArtifactType
+from elias.config import Config
+from elias.data.loader import RandomAccessDataLoader
+from elias.folder.folder import Folder
+
+_ConfigType = TypeVar('_ConfigType', bound=Config)
+_StatisticsType = TypeVar('_StatisticsType', bound=Config)
+_SampleType = TypeVar('_SampleType')
+_T = TypeVar('_T')
+
+
+# TODO: We can abstract the filesystem requirement away by having an interface that provides iterating over the data
+#  and querying for a list of file/data/sample/image names
+
+class BaseDataManager(Generic[_SampleType, _ConfigType, _StatisticsType], ArtifactManager, Iterable[_SampleType], ABC):
+    """
+    A DataManager provides access to dataset files stored on a file system.
+    It is assumed that all dataset files reside in the same root folder.
+    Optionally, the DataManager can process additional information of the dataset stored in JSON files:
+        - ``config.json``: Contains all information necessary to reproduce the creation of the dataset
+        - ``stats.json``: Contains statistics of the dataset that can only be obtained by a potentially costly iteration over the full dataset
+
+    Type Vars
+    ---------
+        _SampleType:
+            The type of samples being returned by this data manager
+        _ConfigType:
+            The class of the dataset configuration (stored in ``config.json``) which is assumed to be a dataclass
+            subclassing :class:`elias.config.Config`. :meth:`save_config` and :meth:`load_config` take/retrieve the
+            dataset configuration as a Python object of this class.
+        _StatisticsType:
+            Same explanation as for `_ConfigType` just for the dataset statistics ``stats.json``
+    """
+
+    _data_folder: Folder
+    _file_name_format: str
+    _shuffle: bool
+    _config_cls: _ConfigType
+    _statistics_cls: _StatisticsType
+
+    def __init__(self,
+                 data_location: str,
+                 file_name_format: str,
+                 shuffle: bool = False,
+                 artifact_type: ArtifactType = ArtifactType.JSON):
+        """
+        Parameters
+        ----------
+            data_location: str
+                Root folder of stored data. This is where ``config.json`` and ``stats.json`` will be loaded from.
+            shuffle: bool, default False
+                Only relevant when using :meth:`_lazy_load_slices`. If shuffle is set to ``True`` dataset files will
+                be loaded in random order
+            file_name_format:
+                Format of the files in the dataset folder. As these are typically numbered, specifying a
+                file name format allows convenient loading and saving of dataset files.
+                An example format may be: image_$.png, sample-$.txt or dataset-$.p
+        """
+        super(BaseDataManager, self).__init__(data_location, artifact_type=artifact_type)
+
+        self._data_folder = Folder(data_location)
+        self._file_name_format = file_name_format
+        self._shuffle = shuffle
+        self._config_cls = reveal_type_var(self, _ConfigType)
+        self._statistics_cls = reveal_type_var(self, _StatisticsType)
+
+    @classmethod
+    @abstractmethod
+    def from_location(cls: Type['BaseDataManager'], location: str) -> 'BaseDataManager':
+        """
+        Creates a data manager for the specified location with default parameters.
+        Needs to be overridden by subclasses.
+
+        Parameters
+        ----------
+            location: path to the folder containing preprocessed data, statistics and config files
+
+        Returns
+        -------
+            a data manager of the sub class at the specified location
+        """
+
+        raise NotImplementedError(f"from_location() of {cls} has to be implemented!")
+
+    @staticmethod
+    def to_batches(generator: Iterable[_T], batch_size: int, lazy: bool = False) -> Generator[List[_T], None, None]:
+        """
+        Lazyly evaluated batch-wise loading
+        """
+
+        if batch_size == 1:
+            for item in generator:
+                yield item
+            return
+
+        if lazy:
+            # Lazy returns batches as a generator where objects are only touched upon actually querying them
+            iterator = iter(generator)
+            try:
+                while True:
+                    first = next(iterator)
+
+                    def chunk():
+                        try:
+                            yield first
+                            for _ in range(batch_size - 1):
+                                yield next(iterator)
+                        except StopIteration:
+                            pass
+
+                    yield chunk()
+            except StopIteration:
+                pass
+        else:
+            # Regular mode materializes all objects within a batch before the batch is returned as a list
+            batch = []
+            for i, item in enumerate(generator):
+                batch.append(item)
+                if (i + 1) % batch_size == 0:
+                    yield batch
+                    batch = []
+            if batch:
+                yield batch
+
+    @staticmethod
+    def batchify_tensor(tensor, batch_size: int) -> Iterator:
+        try:
+            n_samples = len(tensor)
+        except Exception:
+            try:
+                n_samples = tensor.shape[0]
+            except Exception:
+                raise ValueError(f"Cannot infer length of passed tensor with type {type(tensor)}. "
+                                 f"Ensure to use a common Tensor/Array format")
+
+        n_batches = ceil(n_samples / batch_size)
+        for i_batch in range(n_batches):
+            if i_batch == n_batches - 1:
+                yield tensor[i_batch * batch_size:]  # Return all remaining samples as the last batch
+            else:
+                yield tensor[i_batch * batch_size: (i_batch + 1) * batch_size]
+
+    def iter_batched(self, batch_size: int) -> Iterator[_SampleType]:
+        return self.to_batches(self, batch_size)
+
+    def load_config(self) -> _ConfigType:
+        json_config = self._load_artifact("config")
+        return self._config_cls.from_json(json_config)
+
+    def save_config(self, config: _ConfigType):
+        self._save_artifact(config.to_json(), "config")
+
+    def load_stats(self) -> _StatisticsType:
+        json_statistics = self._load_artifact("stats")
+        return self._statistics_cls.from_json(json_statistics)
+
+    def save_stats(self, stats: _StatisticsType):
+        self._save_artifact(stats.to_json(), "stats")
+
+    def get_file_name_by_id(self, file_id: int) -> str:
+        return self._data_folder.substitute(self._file_name_format, file_id)
+
+    def get_location(self) -> str:
+        return self._data_folder.get_location()
+
+    @abstractmethod
+    def __iter__(self) -> Iterator[_SampleType]:
+        pass
+
+    @abstractmethod
+    def _save(self, data: Any):
+        pass
+
+
+class BaseSampleDataManager(BaseDataManager[_SampleType, _ConfigType, _StatisticsType]):
+    """
+    Assumes that all samples lie individually in the data folder.
+    """
+
+    def save_sample(self, data: _SampleType, **kwargs):
+        next_file_name = self._data_folder.generate_next_name(self._file_name_format, create_folder=False)
+        self._save_sample(data, f"{self._data_folder.get_location()}/{next_file_name}")
+
+    def load_sample(self, file_name_or_id: Union[str, int]) -> _SampleType:
+        if isinstance(file_name_or_id, int):
+            file_name = self._data_folder.get_file_name_by_numbering(self._file_name_format, file_name_or_id)
+        else:
+            file_name = file_name_or_id
+
+        return self._load_sample(f"{self._data_folder.get_location()}/{file_name}")
+
+    def __iter__(self) -> Iterator[_SampleType]:
+        file_names = self._data_folder.list_file_numbering(self._file_name_format, return_only_file_names=True)
+
+        if self._shuffle:
+            random.shuffle(file_names)
+        if not file_names:
+            raise Exception(f"No dataset files found in {self._data_folder.get_location()}. Is the path correct?")
+
+        # Converts the path list into a generator
+        for file_name in file_names:
+            yield self._load_sample(f"{self._data_folder.get_location()}/{file_name}")
+
+    @abstractmethod
+    def _save_sample(self, data: _SampleType, file_path: str):
+        pass
+
+    @abstractmethod
+    def _load_sample(self, file_path: str) -> _SampleType:
+        pass
+
+    def _save(self, data: Any):
+        self.save_sample(data)
+
+
+class BaseSliceDataManager(BaseDataManager[_SampleType, _ConfigType, _StatisticsType]):
+    """
+    Assumes that the dataset is split into so-called "slices" that themselves contain small parts of the dataset.
+    For example, the dataset may be split into several pickled files where each contains 500 samples.
+    """
+
+    def save_dataset_slice(self, dataset_slice: Iterator[_SampleType]):
+        next_slice_name = self._data_folder.generate_next_name(self._file_name_format, create_folder=False)
+        self._save_dataset_slice(dataset_slice, f"{self._data_folder.get_location()}/{next_slice_name}")
+
+    def load_dataset_slice(self, slice_name_or_id: Union[str, int]) -> Iterable[_SampleType]:
+        if isinstance(slice_name_or_id, int):
+            slice_name = self._data_folder.get_file_name_by_numbering(self._file_name_format, slice_name_or_id)
+        else:
+            slice_name = slice_name_or_id
+
+        return self._load_dataset_slice(f"{self._data_folder.get_location()}/{slice_name}")
+
+    def __iter__(self) -> Iterator[_SampleType]:
+        slice_names = self._data_folder.list_file_numbering(self._file_name_format, return_only_file_names=True)
+
+        if self._shuffle:
+            random.shuffle(slice_names)
+        if not slice_names:
+            raise Exception(f"No dataset files found in {self._data_folder.get_location()}. Is the path correct?")
+
+        # Converts the path list into a generator
+        for slice_name in slice_names:
+            for sample in self._load_dataset_slice(f"{self._data_folder.get_location()}/{slice_name}"):
+                yield sample
+
+    @abstractmethod
+    def _save_dataset_slice(self, dataset_slice: Iterator[_SampleType], slice_path: str):
+        pass
+
+    @abstractmethod
+    def _load_dataset_slice(self, slice_name: str) -> Iterable[_SampleType]:
+        pass
+
+    def _save(self, data: Any):
+        self.save_dataset_slice(data)
+
+
+class RandomAccessSampleDataManager(RandomAccessDataLoader[_SampleType],
+                                    BaseSampleDataManager[_SampleType, _ConfigType, _StatisticsType],
+                                    ABC):
+    pass
+
+
+class RandomAccessSliceDataManager(RandomAccessDataLoader[_SampleType],
+                                   BaseSliceDataManager[_SampleType, _ConfigType, _StatisticsType],
+                                   ABC):
+    pass

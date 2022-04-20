@@ -2,7 +2,7 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Callable
 
-from elias.io import save_json, save_yaml, load_json, load_yaml
+from elias.util.io import save_json, save_yaml, load_json, load_yaml
 
 
 class ArtifactType(Enum):

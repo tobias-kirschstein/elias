@@ -8,10 +8,11 @@ Currently, there is support for the most frequent data storing formats:
 import gzip
 import json
 import pickle
+from pathlib import Path
 
 import yaml
 
-from elias.fs import ensure_file_ending, ensure_directory_exists, ensure_directory_exists_for_file
+from elias.util.fs import ensure_file_ending, ensure_directory_exists_for_file
 
 
 # =========================================================================
@@ -214,6 +215,14 @@ def save_yaml(obj: dict, path: str, suffix: str = 'yaml'):
 
 
 def load_yaml(path: str, suffix: str = 'yaml') -> dict:
-    path = ensure_file_ending(path, suffix)
-    with open(path, 'r') as f:
+    path_with_suffix = ensure_file_ending(path, suffix)
+    if not Path(path_with_suffix).exists():
+        if suffix == 'yaml':
+            # Try loading .yml instead
+            return load_yaml(path, 'yml')
+        else:
+            raise FileNotFoundError(f"Could not load YAML file {path_with_suffix} (Neither with .yaml suffix). "
+                                    f"Is the path correct?")
+
+    with open(path_with_suffix, 'r') as f:
         return yaml.load(f, Loader=yaml.FullLoader)
