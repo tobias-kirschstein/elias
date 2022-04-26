@@ -9,7 +9,7 @@ import gzip
 import json
 import pickle
 from pathlib import Path
-from typing import Union, Callable, Any
+from typing import Union
 
 import numpy as np
 import yaml
