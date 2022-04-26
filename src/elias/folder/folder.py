@@ -54,6 +54,9 @@ class Folder:
     def get_location(self) -> str:
         return self._location
 
+    def file_exists(self, file_name: str) -> bool:
+        return Path(f"{self._location}/{file_name}").exists()
+
     def list_file_numbering(self,
                             name_format: str,
                             return_only_numbering: bool = False,
@@ -271,8 +274,14 @@ class Folder:
     @staticmethod
     def _build_numbering_extraction_regex(name_format: str) -> re.Pattern:
         assert name_format.count('$') == 1, "The number specifier '$' has to appear in the passed format exactly once"
+        assert name_format.count('[') == name_format.count(']'), "square brackets not matching in name format"
 
         name_format = re.escape(name_format)
+
+        # \[...\] -> (...)?
+        name_format = name_format.replace('\\[', '(')
+        name_format = name_format.replace('\\]', ')?')
+
         # $ -> Numbering format
         name_format = name_format.replace(r'\$', r'(-?\d+)')
 

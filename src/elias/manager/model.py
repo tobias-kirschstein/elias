@@ -149,7 +149,10 @@ class ModelManager(ABC,
         self._cls_evaluation_config = reveal_type_var(self, _EvaluationConfigType)
 
     @classmethod
-    def from_location(cls: Type['ModelManager'], model_store_path: str, run_name: str) -> 'ModelManager':
+    def from_location(cls: Type['ModelManager'],
+                      model_store_path: str,
+                      run_name: str,
+                      localize_via_run_name: bool = False) -> 'ModelManager':
         """
         Creates a model manager for the specified location with default parameters.
         If the subclass constructor takes different arguments than the location, this needs to be overridden
@@ -161,6 +164,8 @@ class ModelManager(ABC,
                 path to the folder containing model runs
             run_name:
                 name of the run
+            localize_via_run_name:
+                whether only the run name should be used to find model folder
 
         Returns
         -------
@@ -168,7 +173,10 @@ class ModelManager(ABC,
         """
 
         try:
-            new_model_manager = cls(model_store_path, run_name)
+            if localize_via_run_name:
+                new_model_manager = cls(run_name)
+            else:
+                new_model_manager = cls(model_store_path, run_name)
         except TypeError:
             raise NotImplementedError(f"Could not construct model manager {cls} with location and run name parameter. "
                                       f"Please override from_location() to match the class __init__() method")

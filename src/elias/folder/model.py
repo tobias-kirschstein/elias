@@ -1,27 +1,28 @@
 from shutil import rmtree
-from typing import TypeVar, Generic, Type, Union
+from typing import Type, Union, Optional
 
-from silberstral import reveal_type_var
+from silberstral.silberstral import create_linked_type_var
 
+from elias.folder.run import RunFolder, _RunManagerType
 from elias.manager.model import ModelManager
-from elias.folder.run import RunFolder
 
-_ModelManagerType = TypeVar("_ModelManagerType", bound=ModelManager)
+_ModelManagerType = create_linked_type_var(_RunManagerType, bound=ModelManager)
 
 
-class ModelFolder(Generic[_ModelManagerType], RunFolder):
-    _model_manager_cls: Type[_ModelManagerType]
+class ModelFolder(RunFolder[_ModelManagerType]):
+    _cls_run_manager: Type[_ModelManagerType]
 
-    def __init__(self, models_folder: str, prefix: str):
-        super(ModelFolder, self).__init__(models_folder, f"{prefix}-$")
-        self._model_manager_cls = reveal_type_var(self, _ModelManagerType)
+    def __init__(self, models_folder: str, prefix: str, localize_via_run_name: bool = False):
+        super(ModelFolder, self).__init__(models_folder, f"{prefix}-$", localize_via_run_name=localize_via_run_name)
 
     def open_run(self, run_name_or_id: Union[str, int]) -> _ModelManagerType:
         run_name = self.resolve_run_name(run_name_or_id)
-        return self._model_manager_cls.from_location(self._folder.get_location(), run_name)
+        return self._cls_run_manager.from_location(self._folder.get_location(),
+                                                   run_name,
+                                                   localize_via_run_name=self._localize_via_run_name)
 
-    def new_run(self) -> _ModelManagerType:
-        new_run_name = self.generate_run_name()
+    def new_run(self, name: Optional[str] = None) -> _ModelManagerType:
+        new_run_name = self.generate_run_name(name)
         return self.open_run(new_run_name)
 
     def delete_run(self, run_name_or_id: Union[str, int]):

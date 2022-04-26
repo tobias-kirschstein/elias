@@ -9,17 +9,22 @@ import gzip
 import json
 import pickle
 from pathlib import Path
+from typing import Union, Callable, Any
 
+import numpy as np
 import yaml
+from PIL import Image
 
 from elias.util.fs import ensure_file_ending, ensure_directory_exists_for_file
+
+PathType = Union[str, Path]
 
 
 # =========================================================================
 # Zipped JSON (.json.gz)
 # =========================================================================
 
-def save_zipped_json(obj: dict, path: str, suffix: str = 'json.gz'):
+def save_zipped_json(obj: dict, path: PathType, suffix: str = 'json.gz'):
     """
     Parses the given Python dict into json, zips it and stores it at the specified location.
     Per default, the path will have a suffix 'json.gz'.
@@ -40,7 +45,7 @@ def save_zipped_json(obj: dict, path: str, suffix: str = 'json.gz'):
         json.dump(obj, f)
 
 
-def load_zipped_json(path: str, suffix: str = 'json.gz') -> dict:
+def load_zipped_json(path: PathType, suffix: str = 'json.gz') -> dict:
     """
     Loads the specified compressed JSON file from `path` and extracts it.
     Per default, the path name is assumed to have a suffix 'json.gz'.
@@ -66,7 +71,7 @@ def load_zipped_json(path: str, suffix: str = 'json.gz') -> dict:
 # Zipped pickles (.p.gz)
 # =========================================================================
 
-def save_zipped_object(obj: object, path: str, suffix: str = 'p.gz'):
+def save_zipped_object(obj: object, path: PathType, suffix: str = 'p.gz'):
     """
     Pickles, zips and stores an arbitrary python object at the specified `path`.
     Per default, the file will have a suffix 'json.gz'.
@@ -87,7 +92,7 @@ def save_zipped_object(obj: object, path: str, suffix: str = 'p.gz'):
         pickle.dump(obj, f)
 
 
-def load_zipped_object(path: str, suffix: str = 'p.gz') -> object:
+def load_zipped_object(path: PathType, suffix: str = 'p.gz') -> object:
     """
     Loads zipped and pickled Python object stored at `path`.
     Per default, the file name is assumed to have a suffix 'p.gz'.
@@ -113,7 +118,7 @@ def load_zipped_object(path: str, suffix: str = 'p.gz') -> object:
 # Pickled objects (.p)
 # =========================================================================
 
-def save_pickled(obj: object, path: str, suffix: str = 'p'):
+def save_pickled(obj: object, path: PathType, suffix: str = 'p'):
     """
     Pickles and stores an arbitrary python object at the specified `path`.
     Per default, the file will have a suffix 'p'.
@@ -134,7 +139,7 @@ def save_pickled(obj: object, path: str, suffix: str = 'p'):
         pickle.dump(obj, f)
 
 
-def load_pickled(path, suffix: str = 'p') -> object:
+def load_pickled(path: PathType, suffix: str = 'p') -> object:
     """
     Loads a pickled Python object stored at the specified `path`.
     Per default, the file name is assumed to have a suffix 'p'.
@@ -160,7 +165,14 @@ def load_pickled(path, suffix: str = 'p') -> object:
 # JSON (.json)
 # =========================================================================
 
-def save_json(obj: dict, path: str, suffix: str = 'json'):
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
+
+
+def save_json(obj: dict, path: PathType, suffix: str = 'json'):
     """
     Stores the given Python dict in JSON format at `path`.
     Per default, the file will have a suffix 'json'.
@@ -178,10 +190,10 @@ def save_json(obj: dict, path: str, suffix: str = 'json'):
     path = ensure_file_ending(path, suffix)
     ensure_directory_exists_for_file(path)
     with open(path, 'w') as f:
-        json.dump(obj, f, indent=4)
+        json.dump(obj, f, indent=4, cls=NumpyEncoder)
 
 
-def load_json(path, suffix: str = 'json') -> dict:
+def load_json(path: PathType, suffix: str = 'json') -> dict:
     """
     Loads and parses the given JSON file and returns it as a Python dict.
     Per default, the file name is assumed to have a suffix 'json'.
@@ -207,14 +219,14 @@ def load_json(path, suffix: str = 'json') -> dict:
 # YAML (.yaml)
 # =========================================================================
 
-def save_yaml(obj: dict, path: str, suffix: str = 'yaml'):
+def save_yaml(obj: dict, path: PathType, suffix: str = 'yaml'):
     path = ensure_file_ending(path, suffix)
     ensure_directory_exists_for_file(path)
     with open(path, 'w') as f:
         yaml.dump(obj, f)
 
 
-def load_yaml(path: str, suffix: str = 'yaml') -> dict:
+def load_yaml(path: PathType, suffix: str = 'yaml') -> dict:
     path_with_suffix = ensure_file_ending(path, suffix)
     if not Path(path_with_suffix).exists():
         if suffix == 'yaml':
@@ -226,3 +238,17 @@ def load_yaml(path: str, suffix: str = 'yaml') -> dict:
 
     with open(path_with_suffix, 'r') as f:
         return yaml.load(f, Loader=yaml.FullLoader)
+
+
+# =========================================================================
+# Images
+# =========================================================================
+
+def save_img(img: np.ndarray, path: PathType):
+    ensure_directory_exists_for_file(path)
+    Image.fromarray(img).save(path)
+
+
+def load_img(path: PathType) -> np.ndarray:
+    img = Image.open(path)
+    return np.asarray(img)

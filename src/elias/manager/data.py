@@ -47,6 +47,7 @@ class BaseDataManager(Generic[_SampleType, _ConfigType, _StatisticsType], Artifa
 
     def __init__(self,
                  data_location: str,
+                 run_name: str,
                  file_name_format: str,
                  shuffle: bool = False,
                  artifact_type: ArtifactType = ArtifactType.JSON):
@@ -55,6 +56,8 @@ class BaseDataManager(Generic[_SampleType, _ConfigType, _StatisticsType], Artifa
         ----------
             data_location: str
                 Root folder of stored data. This is where ``config.json`` and ``stats.json`` will be loaded from.
+            run_name: str
+                the run name or version of the stored data
             shuffle: bool, default False
                 Only relevant when using :meth:`_lazy_load_slices`. If shuffle is set to ``True`` dataset files will
                 be loaded in random order
@@ -63,31 +66,48 @@ class BaseDataManager(Generic[_SampleType, _ConfigType, _StatisticsType], Artifa
                 file name format allows convenient loading and saving of dataset files.
                 An example format may be: image_$.png, sample-$.txt or dataset-$.p
         """
-        super(BaseDataManager, self).__init__(data_location, artifact_type=artifact_type)
+        super(BaseDataManager, self).__init__(f"{data_location}/{run_name}", artifact_type=artifact_type)
 
-        self._data_folder = Folder(data_location)
+        self._data_folder = Folder(f"{data_location}/{run_name}")
+        self._root_location = data_location
+        self._run_name = run_name
         self._file_name_format = file_name_format
         self._shuffle = shuffle
         self._config_cls = reveal_type_var(self, _ConfigType)
         self._statistics_cls = reveal_type_var(self, _StatisticsType)
 
     @classmethod
-    @abstractmethod
-    def from_location(cls: Type['BaseDataManager'], location: str) -> 'BaseDataManager':
+    def from_location(cls: Type['BaseDataManager'],
+                      location: str,
+                      dataset_name: str,
+                      localize_via_run_name: bool = False) -> 'BaseDataManager':
         """
         Creates a data manager for the specified location with default parameters.
         Needs to be overridden by subclasses.
 
         Parameters
         ----------
-            location: path to the folder containing preprocessed data, statistics and config files
+            location:
+                path to the folder containing dataset versions
+            dataset_name:
+                name of the dataset linking to the folder containing preprocessed data, statistics and config files
+            localize_via_run_name:
+                whether only the dataset name should be used to find the folder
 
         Returns
         -------
             a data manager of the sub class at the specified location
         """
 
-        raise NotImplementedError(f"from_location() of {cls} has to be implemented!")
+        try:
+            if localize_via_run_name:
+                data_manager = cls(dataset_name)
+            else:
+                data_manager = cls(location, dataset_name)
+        except TypeError:
+            raise NotImplementedError(f"Could not construct data manager {cls} with a single location parameter. "
+                                      f"Please override from_location() to match the class __init__() method")
+        return data_manager
 
     @staticmethod
     def to_batches(generator: Iterable[_T], batch_size: int, lazy: bool = False) -> Generator[List[_T], None, None]:

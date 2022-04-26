@@ -1,24 +1,24 @@
 from shutil import rmtree
-from typing import TypeVar, Generic, Type, Union
+from typing import TypeVar, Type, Union
 
-from silberstral import reveal_type_var
-
-from elias.manager.analysis import Analysis
 from elias.folder.run import RunFolder
+from elias.manager.analysis import Analysis
 
 _AnalysisType = TypeVar("_AnalysisType", bound=Analysis)
 
 
-class AnalysisFolder(Generic[_AnalysisType], RunFolder):
-    _analysis_cls: Type[_AnalysisType]
+class AnalysisFolder(RunFolder[_AnalysisType]):
 
-    def __init__(self, analysis_folder: str, name_format: str = '$-*'):
-        super(AnalysisFolder, self).__init__(analysis_folder, name_format)
-        self._analysis_cls = reveal_type_var(self, _AnalysisType)
+    _cls_run_manager: Type[_AnalysisType]
+
+    def __init__(self, analysis_folder: str, name_format: str = '$-*', localize_via_run_name: bool = False):
+        super(AnalysisFolder, self).__init__(analysis_folder, name_format, localize_via_run_name=localize_via_run_name)
 
     def open_analysis(self, analysis_name_or_id: Union[str, int]) -> _AnalysisType:
         analysis_name = self.resolve_run_name(analysis_name_or_id)
-        return self._analysis_cls.from_location(f"{self._folder.get_location()}/{analysis_name}")
+        return self._cls_run_manager.from_location(self._folder.get_location(),
+                                                   analysis_name,
+                                                   localize_via_analysis_name=self._localize_via_run_name)
 
     def new_analysis(self, analysis_name: str) -> _AnalysisType:
         new_analysis_name = self.generate_run_name(name=analysis_name)

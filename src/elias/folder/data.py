@@ -3,11 +3,11 @@ from typing import Union, TypeVar, Generic, List, Optional
 
 from silberstral import reveal_type_var
 
-from elias.manager.data import BaseDataManager
 from elias.folder.folder import Folder
+from elias.util import ensure_directory_exists
 from elias.util.version import Version
 
-_DataManagerType = TypeVar("_DataManagerType", bound=BaseDataManager)
+_DataManagerType = TypeVar("_DataManagerType", bound='BaseDataManager')
 
 DATASET_VERSION_REGEX = re.compile(r"v(\d+(?:\.\d+)*)(?:-.*)?")
 
@@ -30,7 +30,11 @@ class DataFolder(Folder, Generic[_DataManagerType]):
     _default_bump_level: int
     _cls_data_manager: _DataManagerType
 
-    def __init__(self, location: str, version_levels: int = 2, default_bump_level: int = -1):
+    def __init__(self,
+                 location: str,
+                 version_levels: int = 2,
+                 default_bump_level: int = -1,
+                 localize_via_run_name: bool = False):
         """
         Parameters
         ----------
@@ -40,13 +44,16 @@ class DataFolder(Folder, Generic[_DataManagerType]):
                 how many levels should be used for versioning, i.e., v1.2 or v1.2.3.4 etc.
             default_bump_level:
                 which level should be increased when a new dataset is created
+            localize_via_run_name:
+                whether only the dataset name will be used for finding the corresponding single dataset folder
         """
-
+        ensure_directory_exists(location)
         super(DataFolder, self).__init__(location)
 
         self._version_levels = version_levels
         self._default_bump_level = default_bump_level
         self._cls_data_manager = reveal_type_var(self, _DataManagerType)
+        self._localize_via_run_name = localize_via_run_name
 
     def list_datasets(self) -> List[str]:
         """
@@ -125,7 +132,9 @@ class DataFolder(Folder, Generic[_DataManagerType]):
         dataset_name = self._get_full_dataset_name(dataset_version)
 
         # Create a new data manager of the corresponding class for the specified dataset folder
-        return self._cls_data_manager.from_location(f"{self._location}/{dataset_name}")
+        return self._cls_data_manager.from_location(self._location,
+                                                    dataset_name,
+                                                    localize_via_run_name=self._localize_via_run_name)
 
     def create_dataset(self, name: Optional[str] = None, bump_level: Optional[int] = None) -> _DataManagerType:
         """
@@ -160,7 +169,9 @@ class DataFolder(Folder, Generic[_DataManagerType]):
         dataset_name = f"v{new_version}" if name is None else f"v{new_version}-{name}"
         self.mkdir(dataset_name)
 
-        return self._cls_data_manager.from_location(f"{self._location}/{dataset_name}")
+        return self._cls_data_manager.from_location(self._location,
+                                                    dataset_name,
+                                                    localize_via_run_name=self._localize_via_run_name)
 
     def remove_dataset(self, dataset_version: Union[str, Version]):
         """

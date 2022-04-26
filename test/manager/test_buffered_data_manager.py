@@ -2,7 +2,7 @@ from collections import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from time import sleep
-from typing import Iterator, Type
+from typing import Iterator
 from unittest import TestCase
 
 from testfixtures import TempDirectory
@@ -59,7 +59,7 @@ class TestStatistics(Config):
 class TestDataManager(BaseSampleDataManager[int, TestConfig, TestStatistics]):
 
     def __init__(self, location: str):
-        super(TestDataManager, self).__init__(location, "sample-$.p")
+        super(TestDataManager, self).__init__(location, "", "sample-$.p")
         self._n_samples_loaded = 0
 
     def reset_counter(self):
@@ -75,10 +75,6 @@ class TestDataManager(BaseSampleDataManager[int, TestConfig, TestStatistics]):
         sample = load_pickled(file_path)
         self._n_samples_loaded += 1
         return sample
-
-    @classmethod
-    def from_location(cls: Type['TestDataManager'], location: str) -> 'TestDataManager':
-        pass
 
 
 class BufferedDataManagerTest(TestCase):

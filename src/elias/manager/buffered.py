@@ -174,7 +174,8 @@ class BufferedDataManager(BaseDataManager[_SampleType, Config, Config]):
                 specifies how many DATASET SLICES will be buffered until a call to .save() will actually block
         """
 
-        super(BufferedDataManager, self).__init__(data_manager.get_location(),
+        super(BufferedDataManager, self).__init__(data_manager._root_location,
+                                                  data_manager._run_name,
                                                   data_manager._file_name_format,
                                                   shuffle=data_manager._shuffle,
                                                   artifact_type=data_manager._artifact_type)

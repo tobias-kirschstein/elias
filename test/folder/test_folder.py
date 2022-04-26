@@ -16,6 +16,13 @@ class FolderTest(TestCase):
         d.makedir("13-bread")
         d.makedir("4-orange")
 
+        d.makedir("TEST-1")
+        d.makedir("TEST-23-name")
+        d.makedir("TEST-24-name-with-1-number")
+        d.makedir("TEST--1")
+        d.makedir("TEST--23-name")
+        d.makedir("TEST--24-name-with-1-number")
+
         d.makedir("P2P-9")
         d.makedir("P2P-10")
         d.makedir("P2P-10-12")
@@ -89,6 +96,30 @@ class FolderTest(TestCase):
         with self.assertRaises(AssertionError):
             # Multiple wildcards
             self._folder.generate_next_name("*-$-*", name='invalid')
+
+    def test_extract_number(self):
+        name_format = 'TEST-$[-*]'
+        file_numbering = self._folder.list_file_numbering(name_format)
+        file_ids, file_names = zip(*file_numbering)
+        self.assertTupleEqual(file_ids, (-24, -23, -1, 1, 23, 24))
+        self.assertTupleEqual(file_names,
+                              ('TEST--24-name-with-1-number', 'TEST--23-name', 'TEST--1',
+                               'TEST-1', 'TEST-23-name', 'TEST-24-name-with-1-number'))
+
+        file_numbering = self._folder.get_numbering_by_file_name(name_format, 'TEST--24-name-with-1-number')
+        self.assertEqual(file_numbering, -24)
+
+        file_numbering = self._folder.get_numbering_by_file_name(name_format, 'TEST-1')
+        self.assertEqual(file_numbering, 1)
+
+        file_numbering = self._folder.get_numbering_by_file_name(name_format, 'TEST-23')
+        self.assertEqual(file_numbering, 23)
+
+        file_name = self._folder.get_file_name_by_numbering(name_format, 1)
+        self.assertEqual(file_name, 'TEST-1')
+
+        file_name = self._folder.get_file_name_by_numbering(name_format, -24)
+        self.assertEqual(file_name, 'TEST--24-name-with-1-number')
 
     def _assert_file_numbering_matches(self, name_format: str, expected_result: List):
         expected_file_names = [x[1] for x in expected_result]

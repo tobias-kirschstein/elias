@@ -1,9 +1,12 @@
 from dataclasses import dataclass
 from enum import auto, Enum
-from typing import Dict, Type
+from typing import Dict, Type, List, Tuple
 from unittest import TestCase
+import numpy as np
+from testfixtures import TempDirectory
 
 from elias.config import AbstractDataclass, Config, ClassMapping, StringEnum
+from elias.util import save_json, load_json
 
 
 class ConfigTest(TestCase):
@@ -39,6 +42,28 @@ class ConfigTest(TestCase):
     class BWithoutMapping(SuperClassWithoutMapping):
         b1: str
         b2: float
+
+    @dataclass
+    class ConfigWithNumpyArray(Config):
+        array: np.ndarray
+        arrays: List[np.ndarray]
+
+    @dataclass
+    class ConfigWithTuple(Config):
+        some_tuple: Tuple[float, int, str]
+
+    # -------------------------------------------------------------------------
+    # Begin Tests
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _serialize_then_unserialize(cls: Type[Config], c: Config) -> Config:
+        c_serialized = c.to_json()
+        with TempDirectory() as d:
+            save_json(c_serialized, d.path)
+            c_loaded = load_json(d.path)
+        c_reconstructed = cls.from_json(c_loaded)
+        return c_reconstructed
 
     def test_abstract_dataclass_with_mapping(self):
         @dataclass
@@ -161,3 +186,28 @@ class ConfigTest(TestCase):
 
         c_reconstructed = c.from_json(c_serialized)
         self.assertEqual(c_reconstructed, c)
+
+    def test_config_with_np_array(self):
+        array = np.eye(2)
+        arrays = [np.eye(3), np.ones(4), np.array([[1, 2], [3, 4]])]
+        config = self.ConfigWithNumpyArray(array, arrays)
+        c_serialized = config.to_json()
+
+        with TempDirectory() as d:
+            save_json(c_serialized, d.path)
+            c_loaded = load_json(d.path)
+
+        c_reconstructed = self.ConfigWithNumpyArray.from_json(c_loaded)
+        self.assertTrue((config.array == c_reconstructed.array).all())
+        self.assertTrue((config.arrays[0] == c_reconstructed.arrays[0]).all())
+        self.assertTrue((config.arrays[1] == c_reconstructed.arrays[1]).all())
+        self.assertTrue((config.arrays[2] == c_reconstructed.arrays[2]).all())
+
+    def test_config_tuple(self):
+        some_tuple = (3.14, 5, "hi")
+        c = self.ConfigWithTuple(some_tuple)
+        # TODO: This test shows why we need to get away from dacite.
+        #   Dacite does not maps the type hints from the Config one to one to the loaded dict
+        #   Instead, it tries to apply all configured casts to every field as long as the cast field is a subclass
+        c_reconstructed = self._serialize_then_unserialize(self.ConfigWithTuple, c)
+        self.assertEqual(c, c_reconstructed)

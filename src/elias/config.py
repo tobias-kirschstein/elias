@@ -8,6 +8,7 @@ from pydoc import locate
 from typing import List, Tuple, Any, Type, get_type_hints, Generic, TypeVar, Dict, Iterator
 
 import dacite
+import numpy as np
 from dacite import from_dict
 from dacite.dataclasses import get_fields
 from silberstral import gather_types, is_type_var_instantiated, reveal_type_var
@@ -213,8 +214,11 @@ class Config(ABC):
         field_types = get_type_hints(cls).values()
         # Find all mentioned types in the dataclass definition (even those mentioned as generics)
         for field_type in gather_types(field_types):
-            if inspect.isclass(field_type) and issubclass(field_type, Enum):
-                casts.append(field_type)
+            if inspect.isclass(field_type):
+                # Automatically cast to enums and custom types that were listed in config fields
+                if issubclass(field_type, Enum): # or not inspect.isbuiltin(field_type):
+                    casts.append(field_type)
+        casts.append(tuple)  # Tuples are stored as [] lists in JSON. Cast them back to tuple here
 
         return casts
 
@@ -281,6 +285,8 @@ class Config(ABC):
                 instantiate_adc_with_sub_class(abstract_dataclass_values, data_sub_class_type)
             for abstract_dataclass, data_sub_class_type
             in zip(abstract_dataclasses, data_sub_class_types)}
+        # Numpy arrays are serialized as lists. Cast them back to np array here
+        type_hooks[np.ndarray] = lambda array_values: np.asarray(array_values)
 
         # Register type hooks to replace every single AbstractDataClass with the respective subclass hinted by the
         # 'type' attribute
