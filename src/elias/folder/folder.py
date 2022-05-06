@@ -195,6 +195,7 @@ class Folder:
 
         wildcard_present = '*' in name_format
         name_none = name is None
+        # TODO: We dont have handling of Optional [*] wildcards here!
         assert wildcard_present ^ name_none, \
             "If `name` is given, `*` should appear in `name_format` and vice-versa"
         assert name_format.count('*') <= 1, 'Wildcard `*` cannot appear more than once'
