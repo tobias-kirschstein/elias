@@ -49,6 +49,12 @@ class ConfigTest(TestCase):
         arrays: List[np.ndarray]
 
     @dataclass
+    class ConfigWithNumbers(Config):
+        i: int
+        f: float
+        b: bool
+
+    @dataclass
     class ConfigWithTuple(Config):
         some_tuple: Tuple[float, int, str]
 
@@ -211,3 +217,19 @@ class ConfigTest(TestCase):
         #   Instead, it tries to apply all configured casts to every field as long as the cast field is a subclass
         c_reconstructed = self._serialize_then_unserialize(self.ConfigWithTuple, c)
         self.assertEqual(c, c_reconstructed)
+
+    def test_config_np_items(self):
+        config = self.ConfigWithNumbers(np.array([1], dtype=np.int64).max(), np.array([1], dtype=np.float64).max(), True)
+        config_json = config.to_json()
+        self.assertEqual(type(config_json['i']), int)
+        self.assertEqual(type(config_json['f']), float)
+
+        config = self.ConfigWithNumbers(np.array([1], dtype=np.int32).max(), np.array([1], dtype=np.float32).max(), True)
+        config_json = config.to_json()
+        self.assertEqual(type(config_json['i']), int)
+        self.assertEqual(type(config_json['f']), float)
+
+        config = self.ConfigWithNumbers(1, 1, np.array([True]).all())
+        config_json = config.to_json()
+        self.assertEqual(type(config_json['b']), bool)
+

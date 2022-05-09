@@ -106,9 +106,9 @@ class ClassMapping(StringEnum):
 @dataclass
 class Config(ABC):
 
-    @staticmethod
-    def _serialize_enums(items: List[Tuple[str, Any]]):
+    def _serialize_enums_and_numpy(self, items: List[Tuple[str, Any]]):
         d = dict()
+        config_fields = {f.name: f for f in fields(self)}
         for key, value in items:
             if isinstance(value, Enum):
                 value = value.value  # Use the Enum's value as representation for the value
@@ -120,6 +120,17 @@ class Config(ABC):
                     k.value if isinstance(k, Enum) else k:
                         v.value if isinstance(v, Enum) else v
                     for k, v in value.items()}
+            elif (config_fields[key].type == float
+                  and (isinstance(value, np.float32) or isinstance(value, np.float64))
+                  or (config_fields[key].type == int and (isinstance(value, np.int32) or isinstance(value, np.int64)))
+                    or (config_fields[key].type == bool and isinstance(value, np.bool_))):
+                # If a single valued numpy object was passed, but a built-in Python type was expected, we need to
+                # extract the value from the numpy container. This is for the convenience of the user
+                # Currently implemented casts:
+                #  - np.float32/64 -> float
+                #  - np.int32/64 -> int
+                #  - np.bool_ -> bool
+                value = value.item()
 
             d[key] = value
         return d
@@ -135,7 +146,7 @@ class Config(ABC):
         -------
             a Python dictionary representing this dataclass
         """
-        return asdict(self, dict_factory=Config._serialize_enums)
+        return asdict(self, dict_factory=self._serialize_enums_and_numpy)
 
     def __post_init__(self):
         """
@@ -216,7 +227,7 @@ class Config(ABC):
         for field_type in gather_types(field_types):
             if inspect.isclass(field_type):
                 # Automatically cast to enums and custom types that were listed in config fields
-                if issubclass(field_type, Enum): # or not inspect.isbuiltin(field_type):
+                if issubclass(field_type, Enum):  # or not inspect.isbuiltin(field_type):
                     casts.append(field_type)
         casts.append(tuple)  # Tuples are stored as [] lists in JSON. Cast them back to tuple here
 
