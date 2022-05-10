@@ -120,10 +120,15 @@ class Config(ABC):
                     k.value if isinstance(k, Enum) else k:
                         v.value if isinstance(v, Enum) else v
                     for k, v in value.items()}
-            elif (config_fields[key].type == float
-                  and (isinstance(value, np.float32) or isinstance(value, np.float64))
-                  or (config_fields[key].type == int and (isinstance(value, np.int32) or isinstance(value, np.int64)))
-                    or (config_fields[key].type == bool and isinstance(value, np.bool_))):
+            # TODO: due to dacite we can only unpack numpy items at the outer level.
+            #   dacite does iterate through nested configs of course, but here it does not give us access to the fields
+            #   of the nested config...
+            elif key in config_fields \
+                    and (config_fields[key].type == float and (
+                    isinstance(value, np.float32) or isinstance(value, np.float64))
+                         or (config_fields[key].type == int and (
+                            isinstance(value, np.int32) or isinstance(value, np.int64)))
+                         or (config_fields[key].type == bool and isinstance(value, np.bool_))):
                 # If a single valued numpy object was passed, but a built-in Python type was expected, we need to
                 # extract the value from the numpy container. This is for the convenience of the user
                 # Currently implemented casts:

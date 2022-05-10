@@ -55,6 +55,12 @@ class ConfigTest(TestCase):
         b: bool
 
     @dataclass
+    class NestedConfigWithNumbers(Config):
+        i2: int
+        f: float
+        nested: 'ConfigTest.ConfigWithNumbers'
+
+    @dataclass
     class ConfigWithTuple(Config):
         some_tuple: Tuple[float, int, str]
 
@@ -219,12 +225,14 @@ class ConfigTest(TestCase):
         self.assertEqual(c, c_reconstructed)
 
     def test_config_np_items(self):
-        config = self.ConfigWithNumbers(np.array([1], dtype=np.int64).max(), np.array([1], dtype=np.float64).max(), True)
+        config = self.ConfigWithNumbers(np.array([1], dtype=np.int64).max(), np.array([1], dtype=np.float64).max(),
+                                        True)
         config_json = config.to_json()
         self.assertEqual(type(config_json['i']), int)
         self.assertEqual(type(config_json['f']), float)
 
-        config = self.ConfigWithNumbers(np.array([1], dtype=np.int32).max(), np.array([1], dtype=np.float32).max(), True)
+        config = self.ConfigWithNumbers(np.array([1], dtype=np.int32).max(), np.array([1], dtype=np.float32).max(),
+                                        True)
         config_json = config.to_json()
         self.assertEqual(type(config_json['i']), int)
         self.assertEqual(type(config_json['f']), float)
@@ -233,3 +241,13 @@ class ConfigTest(TestCase):
         config_json = config.to_json()
         self.assertEqual(type(config_json['b']), bool)
 
+        nested_config = self.ConfigWithNumbers(
+            np.array([1], dtype=np.int32).max(),
+            np.array([1], dtype=np.float32).max(),
+            np.array([True]).all())
+        config = self.NestedConfigWithNumbers(np.array([1], dtype=np.int32).max(), 3.14, nested_config)
+        config_json = config.to_json()
+        self.assertEqual(type(config_json['i2']), int)
+        # self.assertEqual(type(config_json['nested']['b']), bool)
+        # TODO: This is another test that shows why we need to get away from dacite
+        #   Numpy item unpacking only works on the outer level, but not in nested configs
