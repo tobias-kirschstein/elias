@@ -53,3 +53,17 @@ class RunFolderTest(TestCase):
             run_manager.save_config(conf)
             self.assertTrue(Path(f"{run_manager.get_location()}/config.json").exists())
             self.assertEqual(run_manager.load_config(), conf)
+
+    def test_new_run_optional_name(self):
+        with TempDirectory() as d:
+
+            global TMP_FOLDER
+            TMP_FOLDER = d.path
+
+            run_folder = TestRunFolder()
+            run_manager = run_folder.new_run("info")
+
+            self.assertEqual(run_manager.get_run_name(), 'TEST-1-info')
+
+            run_manager = run_folder.new_run()
+            self.assertEqual(run_manager.get_run_name(), 'TEST-2')

@@ -17,7 +17,7 @@ class Version(object):
         if len(version_str_or_ints) == 1 and isinstance(version_str_or_ints[0], str):
             self._levels = Version.parse(version_str_or_ints[0])
         elif len(version_str_or_ints) >= 1 and all([isinstance(part, int) for part in version_str_or_ints]):
-            self._levels = version_str_or_ints
+            self._levels = list(version_str_or_ints)
         else:
             raise ValueError(f"Version specifier has to a single string or several ints. Got {version_str_or_ints}")
 

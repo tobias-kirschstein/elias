@@ -194,15 +194,24 @@ class Folder:
         """
 
         wildcard_present = '*' in name_format
+        wildcard_optional = '[' in name_format and ']' in name_format \
+                            and name_format.index('[') < name_format.index('*') < name_format.index(']')
         name_none = name is None
-        # TODO: We dont have handling of Optional [*] wildcards here!
-        assert wildcard_present ^ name_none, \
+
+        assert wildcard_optional or wildcard_present ^ name_none, \
             "If `name` is given, `*` should appear in `name_format` and vice-versa"
         assert name_format.count('*') <= 1, 'Wildcard `*` cannot appear more than once'
         substituted_name = name_format.replace('$', f'{numbering}')
 
-        if wildcard_present:
+        if wildcard_present and not name_none:
             substituted_name = substituted_name.replace('*', name)
+
+            if wildcard_optional:
+                # Just remove square brackets
+                substituted_name = substituted_name.replace('[', '').replace(']', '')
+        elif wildcard_optional:
+            # No name given, but optional wildcard specified. Remove everything between square brackets [...]
+            substituted_name = substituted_name[:substituted_name.index('[')] + substituted_name[substituted_name.index(']') + 1:]
 
         return substituted_name
 

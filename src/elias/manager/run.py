@@ -10,6 +10,9 @@ from elias.manager.artifact import ArtifactType
 _ConfigType = TypeVar('_ConfigType', bound=Config)
 
 
+# TODO: Rethink the use of run_name in the managers
+#   For optional wildcards, we cannot resolve the run_name here because we don't have the name_format (only folder has)
+#   Maybe instantiation only via folders? But how to handle additional parameters in the __init__ for the manager?
 class RunManager(Generic[_ConfigType], ArtifactManager):
 
     def __init__(self, location: str, run_name: str, artifact_type=ArtifactType.JSON):

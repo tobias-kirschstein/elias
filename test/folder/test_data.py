@@ -142,3 +142,10 @@ class DataFolderTest(unittest.TestCase):
             TMP_DIRECTORY_PATH = d.path
             data_manager = data_folder.create_dataset("some-dataset")
             self.assertTrue(Path(data_manager.get_location()).exists())
+
+    def test_dataset_version(self):
+        TempDirectory.cleanup_all()
+        with TempDirectory() as d:
+            data_manager = TestDataFolder(d).create_dataset("some-info")
+            self.assertEqual(data_manager.get_run_name(), 'v0.1-some-info')
+            self.assertEqual(data_manager.get_dataset_version(), Version(0, 1))

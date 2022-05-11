@@ -9,6 +9,7 @@ from elias.manager.artifact import ArtifactManager, ArtifactType
 from elias.config import Config
 from elias.data.loader import RandomAccessDataLoader
 from elias.folder.folder import Folder
+from elias.util import Version
 
 _ConfigType = TypeVar('_ConfigType', bound=Config)
 _StatisticsType = TypeVar('_StatisticsType', bound=Config)
@@ -189,6 +190,21 @@ class BaseDataManager(Generic[_SampleType, _ConfigType, _StatisticsType], Artifa
 
     def get_location(self) -> str:
         return self._data_folder.get_location()
+
+    def get_run_name(self) -> str:
+        return self._run_name
+
+    def get_dataset_version(self) -> Version:
+        run_version = self._run_name
+        try:
+            # For versions like v1.0-some-info, strip everything after the first dash to get the version
+            idx_dash = run_version.index('-')
+            run_version = run_version[:idx_dash]
+        except ValueError:
+            # No dash found, do nothing
+            pass
+
+        return Version(run_version)
 
     @abstractmethod
     def __iter__(self) -> Iterator[_SampleType]:
