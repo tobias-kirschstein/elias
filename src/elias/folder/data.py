@@ -64,9 +64,12 @@ class DataFolder(Folder, Generic[_DataManagerType]):
             a list containing the found dataset names
         """
 
-        dataset_folders = self.ls()
-        dataset_folders = [f for f in dataset_folders if DATASET_VERSION_REGEX.match(f)]
-        return dataset_folders
+        dataset_versions = self.list_dataset_versions()
+        dataset_names = [self.get_dataset_name_by_version(version) for version in dataset_versions]
+        return dataset_names
+        # dataset_folders = self.ls()
+        # dataset_folders = [f for f in dataset_folders if DATASET_VERSION_REGEX.match(f)]
+        # return dataset_folders
 
     def list_dataset_versions(self) -> List[Version]:
         """
@@ -101,7 +104,7 @@ class DataFolder(Folder, Generic[_DataManagerType]):
             the full name of the dataset the belongs to the specified version
         """
 
-        if dataset_version.startswith('v'):
+        if isinstance(dataset_version, str) and dataset_version.startswith('v'):
             dataset_version = dataset_version[1:]
         dataset_folders = self.ls()
 
