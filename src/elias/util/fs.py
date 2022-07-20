@@ -43,3 +43,15 @@ def ensure_directory_exists(path: str):
     """
 
     Path(path).mkdir(parents=True, exist_ok=True)
+
+
+def clear_directory(path: str):
+    """
+    Clears all files from the specified directory, but keeps the directory itself.
+    If the directory does not exist, nothing happens.
+    """
+
+    path = Path(path)
+    if path.exists():
+        for f in Path(path).iterdir():
+            f.unlink()

@@ -246,6 +246,13 @@ def load_yaml(path: PathType, suffix: str = 'yaml') -> dict:
 
 def save_img(img: np.ndarray, path: PathType):
     ensure_directory_exists_for_file(path)
+
+    if img.dtype == np.float32:
+        # If float array was passed, have to transform [0.0, 1.0] -> [0, ..., 255)
+        assert 0 <= img.min() and img.max() <= 1, \
+            "passed float array should have values between 0 and 1 to be interpreted as image"
+        img = (img * 255).astype(np.uint8)
+
     Image.fromarray(img).save(path)
 
 
