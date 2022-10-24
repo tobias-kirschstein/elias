@@ -51,6 +51,7 @@ class BaseDataManager(Generic[_SampleType, _ConfigType, _StatisticsType], Artifa
                  run_name: str,
                  file_name_format: str,
                  shuffle: bool = False,
+                 create_if_not_exists: bool = False,
                  artifact_type: ArtifactType = ArtifactType.JSON):
         """
         Parameters
@@ -62,14 +63,17 @@ class BaseDataManager(Generic[_SampleType, _ConfigType, _StatisticsType], Artifa
             shuffle: bool, default False
                 Only relevant when using :meth:`_lazy_load_slices`. If shuffle is set to ``True`` dataset files will
                 be loaded in random order
+            create_if_not_exists: bool, default False
+                If set to True, a new folder at data_location/run_name will be created if it does not exist yet
             file_name_format:
                 Format of the files in the dataset folder. As these are typically numbered, specifying a
                 file name format allows convenient loading and saving of dataset files.
                 An example format may be: image_$.png, sample-$.txt or dataset-$.p
         """
-        super(BaseDataManager, self).__init__(f"{data_location}/{run_name}", artifact_type=artifact_type)
+        super(BaseDataManager, self).__init__(f"{data_location}/{run_name}",
+                                              artifact_type=artifact_type)
 
-        self._data_folder = Folder(f"{data_location}/{run_name}")
+        self._data_folder = Folder(f"{data_location}/{run_name}", create_if_not_exists=create_if_not_exists)
         self._root_location = data_location
         self._run_name = run_name
         self._file_name_format = file_name_format

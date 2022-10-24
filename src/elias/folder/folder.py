@@ -4,15 +4,19 @@ from pathlib import Path
 from shutil import rmtree
 from typing import List, Union, Tuple, Optional
 
+from elias.util import ensure_directory_exists
+
 
 # TODO: Allow having leading zeros for $
-
 class Folder:
     _location: str
 
-    def __init__(self, location: str):
-        assert Path(f"{location}").is_dir(), \
-            f"Could not find directory '{location}'. Is the location correct?"
+    def __init__(self, location: str, create_if_not_exists: bool = False):
+        if create_if_not_exists:
+            ensure_directory_exists(location)
+        else:
+            assert Path(f"{location}").is_dir(), \
+                f"Could not find directory '{location}'. Is the location correct?"
 
         self._location = location
 
@@ -211,7 +215,8 @@ class Folder:
                 substituted_name = substituted_name.replace('[', '').replace(']', '')
         elif wildcard_optional:
             # No name given, but optional wildcard specified. Remove everything between square brackets [...]
-            substituted_name = substituted_name[:substituted_name.index('[')] + substituted_name[substituted_name.index(']') + 1:]
+            substituted_name = substituted_name[:substituted_name.index('[')] + substituted_name[
+                                                                                substituted_name.index(']') + 1:]
 
         return substituted_name
 
@@ -304,3 +309,6 @@ class Folder:
 
         regex = re.compile(name_format)
         return regex
+
+    def __str__(self) -> str:
+        return self._location

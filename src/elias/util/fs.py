@@ -30,7 +30,7 @@ def ensure_directory_exists_for_file(path: str):
         path: path to the file or folder for which an underlying directory structure will be ensured
     """
 
-    Path(os.path.dirname(path)).mkdir(parents=True, exist_ok=True)
+    Path(os.path.dirname(str(path))).mkdir(parents=True, exist_ok=True)
 
 
 def ensure_directory_exists(path: str):
@@ -42,7 +42,7 @@ def ensure_directory_exists(path: str):
         path: path to the folder which should exist
     """
 
-    Path(path).mkdir(parents=True, exist_ok=True)
+    Path(str(path)).mkdir(parents=True, exist_ok=True)
 
 
 def clear_directory(path: str):
@@ -51,7 +51,7 @@ def clear_directory(path: str):
     If the directory does not exist, nothing happens.
     """
 
-    path = Path(path)
+    path = Path(str(path))
     if path.exists():
         for f in Path(path).iterdir():
             f.unlink()
