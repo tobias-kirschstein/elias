@@ -282,7 +282,12 @@ class Folder:
         new_name = self.substitute(name_format, new_id, name=name)
 
         if create_folder:
-            self.mkdir(new_name)
+            try:
+                self.mkdir(new_name)
+            except FileExistsError:
+                # It can happen that another concurrent run already created that very folder. In this case, just
+                # try again
+                return self.generate_next_name(name_format, name=name, create_folder=create_folder)
 
         return new_name
 
