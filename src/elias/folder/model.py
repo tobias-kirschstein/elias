@@ -13,7 +13,7 @@ class ModelFolder(RunFolder[_ModelManagerType]):
     _cls_run_manager: Type[_ModelManagerType]
 
     def __init__(self, models_folder: str, prefix: str, localize_via_run_name: bool = False):
-        super(ModelFolder, self).__init__(models_folder, f"{prefix}-$", localize_via_run_name=localize_via_run_name)
+        super(ModelFolder, self).__init__(models_folder, f"{prefix}-$[-*]", localize_via_run_name=localize_via_run_name)
 
     def open_run(self, run_name_or_id: Union[str, int]) -> _ModelManagerType:
         run_name = self.resolve_run_name(run_name_or_id)
