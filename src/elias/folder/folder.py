@@ -14,9 +14,9 @@ class Folder:
     def __init__(self, location: str, create_if_not_exists: bool = False):
         if create_if_not_exists:
             ensure_directory_exists(location)
-        else:
-            assert Path(f"{location}").is_dir(), \
-                f"Could not find directory '{location}'. Is the location correct?"
+        # else:
+        #     assert Path(f"{location}").is_dir(), \
+        #         f"Could not find directory '{location}'. Is the location correct?"
 
         self._location = location
 
@@ -117,7 +117,11 @@ class Folder:
             "Can only set one of return_only_numbering and return_only_file_names"
 
         regex = self._build_numbering_extraction_regex(name_format)
-        file_names = [file.name for file in Path(self._location).iterdir()]
+        if Path(self._location).is_dir():
+            file_names = [file.name for file in Path(self._location).iterdir()]
+        else:
+            file_names = []
+
         file_names_and_numbering = [(int(regex.search(file_name).group(1)), file_name)
                                     for file_name in file_names if regex.match(file_name)]
         file_names_and_numbering = sorted(file_names_and_numbering, key=lambda x: x[0])

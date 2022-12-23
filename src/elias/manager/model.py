@@ -1,3 +1,4 @@
+import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Type, TypeVar, Generic, Optional, List, Union
@@ -99,6 +100,7 @@ class ModelManager(ABC,
                  model_store_path: str,
                  run_name: str,
                  checkpoint_name_format: Optional[str] = None,
+                 checkpoints_sub_folder: Optional[str] = None,
                  evaluation_name_format: Optional[str] = None,
                  artifact_type: ArtifactType = ArtifactType.JSON):
         """
@@ -114,6 +116,9 @@ class ModelManager(ABC,
             checkpoint_name_format:
                 If storing/loading checkpoints via ID, e.g., epoch, is desired, a file name format has to be specified.
                 It has to contain exactly one `$` indicating the checkpoint ID, e.g., `checkpoint-$.ckpt`
+            checkpoints_sub_folder:
+                In case the checkpoints are not stored in the main model folder, one can specify a sub folder within
+                the main folder that will hold checkpoint files
             evaluation_name_format:
                 If storing/loading evaluations via checkpoint ID is desired, a file name format has to be specified.
                 It has to contain exactly one `$` indicating the checkpoint ID and EXCLUDING the file name suffix.
@@ -128,6 +133,11 @@ class ModelManager(ABC,
         super(ModelManager, self).__init__(f"{model_store_path}/{run_name}", artifact_type=artifact_type)
 
         self._folder = Folder(f"{model_store_path}/{run_name}")
+        if checkpoints_sub_folder is None:
+            self._checkpoints_folder = self._folder
+        else:
+            self._checkpoints_folder = Folder(f"{model_store_path}/{run_name}/{checkpoints_sub_folder}")
+
         self._run_name = run_name
         self._checkpoint_name_format = checkpoint_name_format
 
@@ -189,7 +199,11 @@ class ModelManager(ABC,
     def list_checkpoints(self) -> List[str]:
         assert self._checkpoint_name_format is not None, "Cannot list checkpoints, no file name format specified"
 
-        checkpoint_ids, checkpoint_names = zip(*self._folder.list_file_numbering(self._checkpoint_name_format))
+        checkpoint_ids_and_names = self._checkpoints_folder.list_file_numbering(self._checkpoint_name_format)
+        if len(checkpoint_ids_and_names) == 0:
+            return []
+
+        checkpoint_ids, checkpoint_names = zip(*checkpoint_ids_and_names)
         last_neg_id = None
         for idx, checkpoint_id in enumerate(checkpoint_ids):
             if checkpoint_id < 0:
@@ -204,7 +218,7 @@ class ModelManager(ABC,
     def list_checkpoint_ids(self) -> List[int]:
         assert self._checkpoint_name_format is not None, "Cannot list checkpoints, no file name format specified"
 
-        checkpoint_ids = self._folder.list_file_numbering(self._checkpoint_name_format, return_only_numbering=True)
+        checkpoint_ids = self._checkpoints_folder.list_file_numbering(self._checkpoint_name_format, return_only_numbering=True)
         last_neg_id = None
         for idx, checkpoint_id in enumerate(checkpoint_ids):
             if checkpoint_id < 0:
@@ -219,7 +233,7 @@ class ModelManager(ABC,
         if isinstance(checkpoint_name_or_id, int):
             assert self._checkpoint_name_format is not None, \
                 f"Cannot store checkpoint with id {checkpoint_name_or_id} since no checkpoint name format was specified"
-            checkpoint_file_name = self._folder.substitute(self._checkpoint_name_format, checkpoint_name_or_id)
+            checkpoint_file_name = self._checkpoints_folder.substitute(self._checkpoint_name_format, checkpoint_name_or_id)
         else:
             checkpoint_file_name = checkpoint_name_or_id
 
@@ -227,9 +241,16 @@ class ModelManager(ABC,
 
     def load_checkpoint(self, checkpoint_name_or_id: Union[str, int], **kwargs) -> _ModelType:
         checkpoint_id = self._resolve_checkpoint_id(checkpoint_name_or_id)
-        checkpoint_file_name = self._folder.get_file_name_by_numbering(self._checkpoint_name_format, checkpoint_id)
+        checkpoint_file_name = self._checkpoints_folder.get_file_name_by_numbering(self._checkpoint_name_format, checkpoint_id)
 
         return self._load_checkpoint(checkpoint_file_name, **kwargs)
+
+    def delete_checkpoint(self, checkpoint_name_or_id: Union[str, int]):
+        checkpoint_id = self._resolve_checkpoint_id(checkpoint_name_or_id)
+        checkpoint_file_name = self._checkpoints_folder.get_file_name_by_numbering(self._checkpoint_name_format,
+                                                                                   checkpoint_id)
+
+        os.remove(f"{self._checkpoints_folder}/{checkpoint_file_name}")
 
     def build_model(self,
                     model_config: Optional[_ModelConfigType] = None,
@@ -411,13 +432,13 @@ class ModelManager(ABC,
                 assert checkpoint_name_or_id == -1, \
                     f"Only -1 is allowed as negative checkpoint id, got `{checkpoint_name_or_id}`"
 
-                checkpoint_ids, checkpoint_names = zip(*self._folder.list_file_numbering(self._checkpoint_name_format))
+                checkpoint_ids, checkpoint_names = zip(*self._checkpoints_folder.list_file_numbering(self._checkpoint_name_format))
                 if -1 in checkpoint_ids:
                     checkpoint_id = -1
                 else:
                     # No checkpoint with id -1 present => Take checkpoint with largest ID instead
                     assert len(checkpoint_ids) > 0, \
-                        f"Cannot find latest checkpoint, no checkpoints found in {self._folder.get_location()}"
+                        f"Cannot find latest checkpoint, no checkpoints found in {self._checkpoints_folder.get_location()}"
                     checkpoint_id = checkpoint_ids[-1]
             else:
                 # Find corresponding name for checkpoint id
@@ -425,5 +446,5 @@ class ModelManager(ABC,
 
             return checkpoint_id
         else:
-            checkpoint_id = self._folder.get_numbering_by_file_name(self._checkpoint_name_format, checkpoint_name_or_id)
+            checkpoint_id = self._checkpoints_folder.get_numbering_by_file_name(self._checkpoint_name_format, checkpoint_name_or_id)
             return checkpoint_id
