@@ -66,6 +66,24 @@ class RunFolder(Generic[_RunManagerType]):
     def get_run_name_by_id(self, run_id: int) -> Optional[str]:
         return self._folder.get_file_name_by_numbering(self._name_format, run_id)
 
+    def substitute(self, run_id: int, name: Optional[str] = None) -> str:
+        """
+        Returns the run name in the correct format for this run folder.
+        E.g., format is "RUN-$[-*]"
+        substitute(2, name="test") -> RUN-2-test
+
+        Parameters
+        ----------
+            run_id: the run id that should be substituted into the name format
+            name: Optionally, a descriptive name of the run that should be substituted into the name format
+
+        Returns
+        -------
+            A run name following the name format of this run folder
+        """
+
+        return self._folder.substitute(self._name_format, run_id, name=name)
+
     def resolve_run_name(self, run_name_or_id: Union[str, int]) -> Optional[str]:
         if isinstance(run_name_or_id, int):
             return self.get_run_name_by_id(run_name_or_id)

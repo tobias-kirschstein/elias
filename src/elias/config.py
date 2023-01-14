@@ -211,6 +211,10 @@ class Config(ABC):
                 t = t if inspect.isclass(t) else type(t)
                 if issubclass(t, Config) and f.name in loaded_config:
                     # If a field is a Config Type, apply its backward compatibility method
+                    # TODO: How do we want to handle cases like List[SomeConfig]?
+                    #   Currently, the loaded_config[f.name] will be the list of items and the config class will
+                    #   have to deal with unpacking itself.
+                    #   This can be super complex like Tuple[SomeConfig, List[Union[SomeConfig2, SomeConfig3]]]...
                     t._backward_compatibility(loaded_config[f.name])
 
     @classmethod
