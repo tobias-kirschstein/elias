@@ -215,7 +215,13 @@ class Config(ABC):
                     #   Currently, the loaded_config[f.name] will be the list of items and the config class will
                     #   have to deal with unpacking itself.
                     #   This can be super complex like Tuple[SomeConfig, List[Union[SomeConfig2, SomeConfig3]]]...
-                    t._backward_compatibility(loaded_config[f.name])
+                    sub_dict = loaded_config[f.name]
+
+                    # Only traverse further if dictionary is not None.
+                    # After all, what should a dataclass do in its backward_compatibility() method if the passed dict
+                    # is None?
+                    if sub_dict is not None:
+                        t._backward_compatibility(sub_dict)
 
     @classmethod
     def _define_casts(cls) -> List[Type]:

@@ -1,6 +1,6 @@
 import re
 from abc import abstractmethod
-from typing import Union
+from typing import Union, List
 
 _RANGE_EXTRACTOR = re.compile(r"(-?\d+)-(-?\d+)")
 _STEP_RANGE_EXTRACTOR = re.compile(r"(\d+)n(\+(\d+))?")
@@ -104,3 +104,27 @@ class IndexRange:
         assert self.resolved, "Cannot iterate an unresolved index range"
 
         return iter(range(self.start_idx, self.end_idx + 1))
+
+
+class IndexRangeBundle:
+
+    def __init__(self, index_ranges: List[IndexRange]):
+        self._index_ranges = index_ranges
+
+    @staticmethod
+    def from_description(range_specifier: str) -> 'IndexRangeBundle':
+        range_specifier = range_specifier.replace("\\", "")  # Get rid of escape characters \\
+        index_ranges = [IndexRange.from_description(description) for description in
+                        range_specifier.split(',')]
+        return IndexRangeBundle(index_ranges)
+
+    def resolve(self, n_samples: int):
+        for index_range in self._index_ranges:
+            index_range.resolve(n_samples)
+
+    def __contains__(self, idx: int) -> bool:
+        for index_range in self._index_ranges:
+            if idx in index_range:
+                return True
+
+        return False

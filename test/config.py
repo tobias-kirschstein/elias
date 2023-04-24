@@ -1,12 +1,28 @@
 from dataclasses import dataclass
 from enum import auto, Enum
-from typing import Dict, Type, List, Tuple
+from typing import Dict, Type, List, Tuple, Optional
 from unittest import TestCase
 import numpy as np
 from testfixtures import TempDirectory
 
 from elias.config import AbstractDataclass, Config, ClassMapping, StringEnum
 from elias.util import save_json, load_json
+
+
+# TODO: We may have an issue with forward references (types denoted with 'SomeType')
+#   These have to be evaluated to know which class they refer to
+#   Evaluation is necessary in _backward_compatibility()
+#   However, evaluation of a forward reference is not straight forward. Maybe print a warning in this case?
+#   Not even sure, what will break in this case
+@dataclass
+class InnerConfig(Config):
+    b: str
+
+
+@dataclass
+class OptionalNestedConfig(Config):
+    i: int
+    nested: Optional[InnerConfig]
 
 
 class ConfigTest(TestCase):
@@ -251,3 +267,8 @@ class ConfigTest(TestCase):
         # self.assertEqual(type(config_json['nested']['b']), bool)
         # TODO: This is another test that shows why we need to get away from dacite
         #   Numpy item unpacking only works on the outer level, but not in nested configs
+
+    def test_config_backward_compatibility_none_field(self):
+        config = OptionalNestedConfig(2, None)
+        config_json = config.to_json()
+        OptionalNestedConfig.from_json(config_json)
