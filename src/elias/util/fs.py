@@ -2,7 +2,7 @@ import os
 import re
 from pathlib import Path
 from shutil import copy2
-from typing import Callable
+from typing import Callable, Union
 
 import PIL
 from PIL import Image
@@ -27,7 +27,7 @@ def ensure_file_ending(file: str, ending: str) -> str:
     return file if file.endswith(ending) else f"{file}.{ending}"
 
 
-def ensure_directory_exists_for_file(path: str):
+def ensure_directory_exists_for_file(path: Union[str, Path]):
     """
     Ensures that the folder to the specified path exists and creates a nested folder structure if necessary.
     Be careful to use trailing '/' if `path` directly constitutes the target folder (and not an arbitrary file
@@ -41,7 +41,7 @@ def ensure_directory_exists_for_file(path: str):
     Path(os.path.dirname(str(path))).mkdir(parents=True, exist_ok=True)
 
 
-def ensure_directory_exists(path: str):
+def ensure_directory_exists(path: Union[str, Path]):
     """
     Ensures that the specified folder exists and creates a nested folder structure if necessary.
 
@@ -53,7 +53,7 @@ def ensure_directory_exists(path: str):
     Path(str(path)).mkdir(parents=True, exist_ok=True)
 
 
-def clear_directory(path: str):
+def clear_directory(path: Union[str, Path]):
     """
     Clears all files from the specified directory, but keeps the directory itself.
     If the directory does not exist, nothing happens.
