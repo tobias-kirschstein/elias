@@ -18,7 +18,7 @@ class RunManager(Generic[_ConfigType], ArtifactManager):
     def __init__(self, location: str, run_name: str, artifact_type=ArtifactType.JSON):
         run_location = f"{location}/{run_name}"
         assert Path(run_location).is_dir(), \
-            f"Could not find directory '{location}'. Is the path correct?"
+            f"Could not find directory '{run_location}'. Is the path correct?"
         super(RunManager, self).__init__(run_location, artifact_type=artifact_type)
 
         self._location = run_location

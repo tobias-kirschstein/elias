@@ -19,6 +19,8 @@ class RunFolder(Generic[_RunManagerType]):
     Runs in the same run folder share a name format that can contain the following wildcards:
         - $: for the run id
         - *: for extra name information for a run (optional)
+
+    A typical name format might look like this: RUN-$[-*]
     """
 
     _name_format: str
@@ -31,6 +33,9 @@ class RunFolder(Generic[_RunManagerType]):
         self._localize_via_run_name = localize_via_run_name
 
         self._cls_run_manager: Type[_RunManagerType] = reveal_type_var(self, _RunManagerType)
+
+    def get_location(self) -> str:
+        return self._folder.get_location()
 
     def cd(self, sub_folder: str):
         # Inplace cd to avoid having to infer the correct subclass of the current object
@@ -85,6 +90,15 @@ class RunFolder(Generic[_RunManagerType]):
         return self._folder.substitute(self._name_format, run_id, name=name)
 
     def resolve_run_name(self, run_name_or_id: Union[str, int]) -> Optional[str]:
+        """
+        Find complete run name given a partial run name or run ID.
+
+        :param run_name_or_id:
+            for example, RUN-2 or 2
+        :return:
+            The complete run name that was found in the run folder, e.g., RUN-2-higher_LR
+        """
+
         if isinstance(run_name_or_id, int):
             return self.get_run_name_by_id(run_name_or_id)
         elif self._folder.file_exists(run_name_or_id):
