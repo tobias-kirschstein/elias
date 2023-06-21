@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import auto, Enum
-from typing import Dict, Type, List, Tuple, Optional
+from typing import Dict, Type, List, Tuple, Optional, Union
 from unittest import TestCase
 import numpy as np
 from testfixtures import TempDirectory
@@ -79,6 +79,18 @@ class ConfigTest(TestCase):
     @dataclass
     class ConfigWithTuple(Config):
         some_tuple: Tuple[float, int, str]
+
+    class ComplicatedType(np.ndarray):
+
+        def __new__(cls, values: Union[List, np.ndarray], *args, **kwargs):
+            values = np.asarray(values)
+            pose = super().__new__(cls, values.shape, dtype=np.float32)
+            pose[:] = values
+            return pose
+
+    @dataclass
+    class TypeHookConfig(Config):
+        data_structure: 'ConfigTest.ComplicatedType'
 
     # -------------------------------------------------------------------------
     # Begin Tests
@@ -272,3 +284,19 @@ class ConfigTest(TestCase):
         config = OptionalNestedConfig(2, None)
         config_json = config.to_json()
         OptionalNestedConfig.from_json(config_json)
+
+    def test_type_hooks(self):
+        data_structure = ConfigTest.ComplicatedType([1, 2, 3])
+        type_hook_config = ConfigTest.TypeHookConfig(data_structure)
+        type_hook_config_json = type_hook_config.to_json()
+
+        with TempDirectory() as d:
+            save_json(type_hook_config_json, d.path)
+            type_hook_config_loaded = load_json(d.path)
+
+        type_hook_config_reconstructed = ConfigTest.TypeHookConfig.from_json(
+            type_hook_config_loaded,
+            type_hooks={ConfigTest.ComplicatedType: lambda value: ConfigTest.ComplicatedType(value)}
+        )
+
+        assert (type_hook_config_reconstructed.data_structure == type_hook_config.data_structure).all()

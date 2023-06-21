@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, asdict, fields, field
 from enum import Enum, EnumMeta, auto
 from pydoc import locate
-from typing import List, Tuple, Any, Type, get_type_hints, Generic, TypeVar, Dict, Iterator
+from typing import List, Tuple, Any, Type, get_type_hints, Generic, TypeVar, Dict, Iterator, Callable, Optional
 
 import dacite
 import numpy as np
@@ -250,7 +250,9 @@ class Config(ABC):
 
     # TODO: rename. It doesn't make sense that this method is called from_json
     @classmethod
-    def from_json(cls, json_config: dict) -> Config:
+    def from_json(cls,
+                  json_config: dict,
+                  type_hooks: Optional[Dict[Type, Callable[[Any], Any]]] = None) -> Config:
         """
         Constructs this Config dataclass from the given Python dictionary which typically will be a parsed JSON.
         As enums are not serialized in JSONs, special attention is put to such attributes.
@@ -262,6 +264,15 @@ class Config(ABC):
         json_config: dict
             the dictionary representing the JSON configuration. if the dictionary contains keys that don't match the
             dataclass an exception will be thrown. If you want to ignore excess items, see :meth:`from_dict`
+        type_hooks: Dict[Type, Callable[[Any], Any]]]
+            type hooks can be used to guide the deserialization process.
+            For example, a complicated data structure may be serialized as a series of lists, but in the loaded config
+            one may want to hold the data structure and not the serialized version of it.
+            In this case, a type hook defines the mapping from serialized -> data structure
+            Per-default, a type hook that maps series of lists back to numpy arrays is already added:
+            {
+                np.ndarray: lambda array_values: np.asarray(array_values)
+            }
 
         Returns
         -------
@@ -304,21 +315,26 @@ class Config(ABC):
 
             return sub_class.from_json(abstract_dataclass_values)
 
-        type_hooks = {
+        all_type_hooks = {
             # Use Lambda closure (i=i) to ensure data_sub_class_type is copied for each lambda
             abstract_dataclass:
                 lambda abstract_dataclass_values, data_sub_class_type=data_sub_class_type:
                 instantiate_adc_with_sub_class(abstract_dataclass_values, data_sub_class_type)
             for abstract_dataclass, data_sub_class_type
             in zip(abstract_dataclasses, data_sub_class_types)}
+
         # Numpy arrays are serialized as lists. Cast them back to np array here
-        type_hooks[np.ndarray] = lambda array_values: np.asarray(array_values)
+        all_type_hooks[np.ndarray] = lambda array_values: np.asarray(array_values)
+
+        if type_hooks is not None:
+            # Add use-defined type hooks
+            all_type_hooks.update(type_hooks)
 
         # Register type hooks to replace every single AbstractDataClass with the respective subclass hinted by the
         # 'type' attribute
         dacite_config = dacite.Config(
             cast=cls._define_casts(),
-            type_hooks=type_hooks)
+            type_hooks=all_type_hooks)
 
         # backward_cls = type(cls.__name__, cls.__bases__, dict(cls.__dict__))
         #
