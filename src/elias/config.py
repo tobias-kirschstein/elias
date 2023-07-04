@@ -4,6 +4,7 @@ import inspect
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, asdict, fields, field
 from enum import Enum, EnumMeta, auto
+from importlib import import_module
 from pydoc import locate
 from typing import List, Tuple, Any, Type, get_type_hints, Generic, TypeVar, Dict, Iterator, Callable, Optional
 
@@ -18,7 +19,7 @@ from silberstral import gather_types, is_type_var_instantiated, reveal_type_var
 # =========================================================================
 # Better Enum handling for persistable config objects
 # =========================================================================
-
+from elias.util.typing import class_to_module_path, module_path_to_class
 
 _T_Enum = TypeVar('_T_Enum', bound=Enum)
 
@@ -120,6 +121,11 @@ class Config(ABC):
                     k.value if isinstance(k, Enum) else k:
                         v.value if isinstance(v, Enum) else v
                     for k, v in value.items()}
+            elif inspect.isclass(value) and key in config_fields and config_fields[key].type == Type:
+                # Handling for fields with type 'Type':
+                # represent the Type as a module import string, e.g., np.ndarray
+                value = class_to_module_path(value)
+
             # TODO: due to dacite we can only unpack numpy items at the outer level.
             #   dacite does iterate through nested configs of course, but here it does not give us access to the fields
             #   of the nested config...
@@ -325,6 +331,7 @@ class Config(ABC):
 
         # Numpy arrays are serialized as lists. Cast them back to np array here
         all_type_hooks[np.ndarray] = lambda array_values: np.asarray(array_values)
+        all_type_hooks[Type] = module_path_to_class
 
         if type_hooks is not None:
             # Add use-defined type hooks
@@ -348,7 +355,20 @@ class Config(ABC):
         # backward_cls.__new__ = backward_compatibility_new
         # return from_dict(backward_cls, json_config, config=dacite_config)
         cls._backward_compatibility(json_config)
-        return from_dict(cls, json_config, config=dacite_config)
+        try:
+            config = from_dict(cls, json_config, config=dacite_config)
+        except IndexError as e:
+            type_hints = get_type_hints(cls)
+            if Type in type_hints.values():
+                # In case a field has type "Type" dacite unfortunately throws an unecessary error
+                # IndexError: tuple index out of range
+                # happening in types.py:129
+                dacite_config.check_types = False
+                config = from_dict(cls, json_config, config=dacite_config)
+            else:
+                raise e
+
+        return config
 
     @classmethod
     def from_dict(cls, values: dict):

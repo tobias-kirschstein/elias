@@ -92,6 +92,12 @@ class ConfigTest(TestCase):
     class TypeHookConfig(Config):
         data_structure: 'ConfigTest.ComplicatedType'
 
+    @dataclass
+    class ConfigWithType(Config):
+        my_type: Type
+
+        nested: Optional['ConfigTest.ConfigWithType'] = None
+
     # -------------------------------------------------------------------------
     # Begin Tests
     # -------------------------------------------------------------------------
@@ -300,3 +306,13 @@ class ConfigTest(TestCase):
         )
 
         assert (type_hook_config_reconstructed.data_structure == type_hook_config.data_structure).all()
+
+    def test_config_with_type(self):
+        config = ConfigTest.ConfigWithType(np.ndarray, nested=ConfigTest.ConfigWithType(str))
+        config_json = config.to_json()
+        with TempDirectory() as d:
+            save_json(config_json, d.path)
+            config_json_loaded = load_json(d.path)
+
+        config_reconstructed = ConfigTest.ConfigWithType.from_json(config_json_loaded)
+        self.assertEqual(config_reconstructed, config)
