@@ -98,6 +98,10 @@ class ConfigTest(TestCase):
 
         nested: Optional['ConfigTest.ConfigWithType'] = None
 
+    @dataclass
+    class ConfigWithWrappedType(Config):
+        my_config: 'ConfigTest.ConfigWithType'
+
     # -------------------------------------------------------------------------
     # Begin Tests
     # -------------------------------------------------------------------------
@@ -315,4 +319,13 @@ class ConfigTest(TestCase):
             config_json_loaded = load_json(d.path)
 
         config_reconstructed = ConfigTest.ConfigWithType.from_json(config_json_loaded)
+        self.assertEqual(config_reconstructed, config)
+
+        config = ConfigTest.ConfigWithWrappedType(config)
+        config_json = config.to_json()
+        with TempDirectory() as d:
+            save_json(config_json, d.path)
+            config_json_loaded = load_json(d.path)
+
+        config_reconstructed = ConfigTest.ConfigWithWrappedType.from_json(config_json_loaded)
         self.assertEqual(config_reconstructed, config)

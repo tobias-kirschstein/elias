@@ -121,7 +121,12 @@ class Config(ABC):
                     k.value if isinstance(k, Enum) else k:
                         v.value if isinstance(v, Enum) else v
                     for k, v in value.items()}
-            elif inspect.isclass(value) and key in config_fields and config_fields[key].type == Type:
+
+            # TODO: Same issue as with numpy handling
+            #   We can only serialize 'Type' fields if we don't check for the type annotation in the dataclass
+            #   This is risky, because in an ideal scenario we would only serialize a class value if the field
+            #   is actually supposed to hold a class
+            elif inspect.isclass(value):  # and key in config_fields and config_fields[key].type == Type:
                 # Handling for fields with type 'Type':
                 # represent the Type as a module import string, e.g., np.ndarray
                 value = class_to_module_path(value)
@@ -358,8 +363,8 @@ class Config(ABC):
         try:
             config = from_dict(cls, json_config, config=dacite_config)
         except IndexError as e:
-            type_hints = get_type_hints(cls)
-            if Type in type_hints.values():
+            referenced_types = gather_types(cls)
+            if Type in referenced_types:
                 # In case a field has type "Type" dacite unfortunately throws an unecessary error
                 # IndexError: tuple index out of range
                 # happening in types.py:129
