@@ -346,7 +346,8 @@ class Config(ABC):
         # 'type' attribute
         dacite_config = dacite.Config(
             cast=cls._define_casts(),
-            type_hooks=all_type_hooks)
+            type_hooks=all_type_hooks,
+            strict=True)
 
         # backward_cls = type(cls.__name__, cls.__bases__, dict(cls.__dict__))
         #
