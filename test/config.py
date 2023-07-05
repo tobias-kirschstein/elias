@@ -102,6 +102,10 @@ class ConfigTest(TestCase):
     class ConfigWithWrappedType(Config):
         my_config: 'ConfigTest.ConfigWithType'
 
+    @dataclass
+    class ConfigWithUnion(Config):
+        numbers_or_tuple: Union['ConfigTest.ConfigWithNumbers', 'ConfigTest.ConfigWithTuple']
+
     # -------------------------------------------------------------------------
     # Begin Tests
     # -------------------------------------------------------------------------
@@ -329,3 +333,24 @@ class ConfigTest(TestCase):
 
         config_reconstructed = ConfigTest.ConfigWithWrappedType.from_json(config_json_loaded)
         self.assertEqual(config_reconstructed, config)
+
+    def test_config_with_union(self):
+        config_with_numbers = ConfigTest.ConfigWithNumbers(1, 2.3, True)
+        config_with_tuple = ConfigTest.ConfigWithTuple((2.5, 3, "test"))
+        config_1 = ConfigTest.ConfigWithUnion(config_with_numbers)
+        config_2 = ConfigTest.ConfigWithUnion(config_with_tuple)
+
+        config_json_1 = config_1.to_json()
+        config_json_2 = config_2.to_json()
+        with TempDirectory() as d:
+            save_json(config_json_1, f"{d.path}/config_1.json")
+            save_json(config_json_2, f"{d.path}/config_2.json")
+            config_json_1_loaded = load_json(f"{d.path}/config_1.json")
+            config_json_2_loaded = load_json(f"{d.path}/config_2.json")
+
+        config_1_reconstructed = ConfigTest.ConfigWithUnion.from_json(config_json_1_loaded)
+        config_2_reconstructed = ConfigTest.ConfigWithUnion.from_json(config_json_2_loaded)
+        self.assertEqual(config_1_reconstructed, config_1)
+        self.assertEqual(type(config_1_reconstructed.numbers_or_tuple), ConfigTest.ConfigWithNumbers)
+        self.assertEqual(config_2_reconstructed, config_2)
+        self.assertEqual(type(config_2_reconstructed.numbers_or_tuple), ConfigTest.ConfigWithTuple)
