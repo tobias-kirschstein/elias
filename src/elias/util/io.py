@@ -9,8 +9,11 @@ import gzip
 import json
 import pickle
 from pathlib import Path
-from typing import Union
+from typing import Union, Tuple, Literal
 
+import PIL.Image
+import cv2
+import imageio
 import numpy as np
 import yaml
 from PIL import Image
@@ -247,15 +250,70 @@ def load_yaml(path: PathType, suffix: str = 'yaml') -> dict:
 def save_img(img: np.ndarray, path: PathType):
     ensure_directory_exists_for_file(path)
 
-    if img.dtype == np.float32:
-        # If float array was passed, have to transform [0.0, 1.0] -> [0, ..., 255)
-        assert 0 <= img.min() and img.max() <= 1, \
-            "passed float array should have values between 0 and 1 to be interpreted as image"
-        img = (img * 255).astype(np.uint8)
+    if Path(path).suffix == '.exr':
+        imageio.imwrite(path, img)
+    else:
+        if img.dtype == np.float32:
+            # TODO: Do we really want to quantize without asking?
+            # If float array was passed, have to transform [0.0, 1.0] -> [0, ..., 255)
+            assert 0 <= img.min() and img.max() <= 1, \
+                "passed float array should have values between 0 and 1 to be interpreted as image"
+            img = (img * 255).astype(np.uint8)
 
-    Image.fromarray(img).save(path)
+        Image.fromarray(img).save(path)
 
 
 def load_img(path: PathType) -> np.ndarray:
-    img = Image.open(path)
+    if Path(path).suffix == '.exr':
+        img = imageio.imread_v2(path)
+    else:
+        img = Image.open(path)
+
     return np.asarray(img)
+
+
+InterpolationType = Literal['nearest', 'bilinear', 'bicubic', 'lanczos']
+
+
+def resize_img(img: np.ndarray,
+               scale: Union[float, Tuple[float, float]],
+               interpolation: InterpolationType = 'bilinear',
+               use_opencv: bool = False) -> np.ndarray:
+    try:
+        iter(scale)
+    except TypeError:
+        scale_x = scale
+        scale_y = scale
+    else:
+        scale_x, scale_y = scale
+
+    if use_opencv:
+        if interpolation == 'nearest':
+            interpolation = cv2.INTER_NEAREST
+        elif interpolation == 'bilinear':
+            interpolation = cv2.INTER_LINEAR
+        elif interpolation == 'bicubic':
+            interpolation = cv2.INTER_CUBIC
+        elif interpolation == 'lanczos':
+            interpolation = cv2.INTER_LANCZOS4
+        else:
+            raise ValueError(f"Invalid interpolation type: {interpolation}")
+
+        img = cv2.resize(img, (int(img.shape[1] * scale_x), int(img.shape[0] * scale_y)), interpolation=interpolation)
+    else:
+        if interpolation == 'nearest':
+            interpolation = PIL.Image.Resampling.NEAREST
+        elif interpolation == 'bilinear':
+            interpolation = PIL.Image.Resampling.BILINEAR
+        elif interpolation == 'bicubic':
+            interpolation = PIL.Image.Resampling.BICUBIC
+        elif interpolation == 'lanczos':
+            interpolation = PIL.Image.Resampling.LANCZOS
+        else:
+            raise ValueError(f"Invalid interpolation type: {interpolation}")
+
+        img_pil = Image.fromarray(img)
+        img_pil = img_pil.resize((int(img.shape[1] * scale_x), int(img.shape[0] * scale_y)), resample=interpolation)
+        img = np.array(img_pil)
+
+    return img
