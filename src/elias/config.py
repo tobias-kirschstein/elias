@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import inspect
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, asdict, fields, field
+from collections import defaultdict
+from dataclasses import dataclass, asdict, fields, field, replace, is_dataclass
 from enum import Enum, EnumMeta, auto
 from importlib import import_module
 from pydoc import locate
@@ -162,7 +163,22 @@ class Config(ABC):
         -------
             a Python dictionary representing this dataclass
         """
-        return asdict(self, dict_factory=self._serialize_enums_and_numpy)
+
+        config = replace(self)
+
+        # Python's asdict() cannot deal with defaultdict instances "TypeError: first argument must be callable or None"
+        # Hence, we silently replace defaultdicts with regular dicts here
+        def _cast_defaultdict_rec(inner_config: Config):
+            for field in fields(inner_config):
+                value = getattr(inner_config, field.name)
+                if isinstance(value, defaultdict):
+                    setattr(inner_config, field.name, dict(value))
+                elif is_dataclass(value):
+                    _cast_defaultdict_rec(value)
+
+        _cast_defaultdict_rec(config)
+
+        return asdict(config, dict_factory=config._serialize_enums_and_numpy)
 
     def __post_init__(self):
         """

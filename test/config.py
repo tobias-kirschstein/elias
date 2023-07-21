@@ -1,7 +1,9 @@
+from collections import defaultdict
 from dataclasses import dataclass
 from enum import auto, Enum
 from typing import Dict, Type, List, Tuple, Optional, Union
 from unittest import TestCase
+
 import numpy as np
 from testfixtures import TempDirectory
 
@@ -79,6 +81,10 @@ class ConfigTest(TestCase):
     @dataclass
     class ConfigWithTuple(Config):
         some_tuple: Tuple[float, int, str]
+
+    @dataclass
+    class ConfigWithDict(Config):
+        some_dict: Dict[str, List[int]]
 
     class ComplicatedType(np.ndarray):
 
@@ -195,6 +201,8 @@ class ConfigTest(TestCase):
     #     new_config = TestConfig()
 
     def test_config_dict_with_enums(self):
+        # TODO: fails with dacite > 1.7.0
+
         class VanillaEnum(Enum):
             A = auto()
             B = auto()
@@ -354,3 +362,30 @@ class ConfigTest(TestCase):
         self.assertEqual(type(config_1_reconstructed.numbers_or_tuple), ConfigTest.ConfigWithNumbers)
         self.assertEqual(config_2_reconstructed, config_2)
         self.assertEqual(type(config_2_reconstructed.numbers_or_tuple), ConfigTest.ConfigWithTuple)
+
+    def test_config_with_defaultdict(self):
+        some_dict = defaultdict(list)
+        some_dict["test"].append(1)
+        config_with_dict = ConfigTest.ConfigWithDict(some_dict)
+
+        c_loaded = self._serialize_then_unserialize(ConfigTest.ConfigWithDict, config_with_dict)
+        self.assertEqual(c_loaded.some_dict, config_with_dict.some_dict)
+
+    # def test_config_with_dict(self):
+    #     # TODO: dacite does not support deserialization of dicts with keys other than str!
+    #     #   The problem is the JSON write/load. Dict keys get automatically casted to str
+    #     #   Would need a custom pass through the loaded dictionary to cast fields wrt their specified type in the dataclass
+    #     #   Dict values on the other side are fine!
+    #
+    #     # some_dict = defaultdict(list)
+    #     # some_dict[1].append("hi")
+    #     some_dict = {1: ["hi"]}
+    #     config_with_dict = ConfigTest.ConfigWithDict(some_dict)
+    #
+    #     config_json = config_with_dict.to_json()
+    #     with TempDirectory() as d:
+    #         save_json(config_json, d.path)
+    #         config_json_loaded = load_json(d.path)
+    #
+    #     config_reconstructed = ConfigTest.ConfigWithDict.from_json(config_json_loaded)
+    #     self.assertEqual(config_reconstructed.some_dict, config_with_dict.some_dict)
