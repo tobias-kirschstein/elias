@@ -16,6 +16,31 @@ def make_wandb_video(wandb_project: str,
                      /,
                      max_n_frames: int = 30,
                      fps: int = 10):
+    """
+    Collects all images that were logged with a given key to a wandb run.
+    Images are packed into a .mp4 video for playback.
+
+    Parameters
+    ----------
+        wandb_project:
+            name of the wandb project
+        run_id:
+            Id of the wandb run. Can be retrieved from the URL: https://wandb.ai/$USER/diff-vp/runs/plh665gq <- run ID
+        image_key:
+            Which subset of images that are logged to the run should be downloaded. The image key is usually written
+            in bold font above the logged image in the dashboard
+        output_folder:
+            Path to a folder in which the .mp4 will be stored
+        max_n_frames:
+            Sometimes, many images are logged to a run.
+            To avoid excessive downloads, a maximum number of frames is specified
+        fps:
+            Playback speed of the generated video
+    """
+
+    # TODO: Currently, models are imported on-demand
+    #   Wanted to avoid adding all these dependencies just for one method
+    #   Maybe need yet another different repository for these kind of training/logging helpers?
     import wandb
     from tqdm import tqdm
     import requests

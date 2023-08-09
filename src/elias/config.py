@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from copy import deepcopy
 from dataclasses import dataclass, asdict, fields, field, replace, is_dataclass
 from enum import Enum, EnumMeta, auto
 from importlib import import_module
@@ -164,7 +165,7 @@ class Config(ABC):
             a Python dictionary representing this dataclass
         """
 
-        config = replace(self)
+        config = deepcopy(self)
 
         # Python's asdict() cannot deal with defaultdict instances "TypeError: first argument must be callable or None"
         # Hence, we silently replace defaultdicts with regular dicts here

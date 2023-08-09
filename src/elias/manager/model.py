@@ -208,6 +208,9 @@ class ModelManager(ABC,
         checkpoint_path = f"{self._checkpoints_folder.get_location()}/{checkpoint_file_name}"
         return checkpoint_path
 
+    def get_checkpoint_folder(self) -> str:
+        return self._checkpoints_folder.get_location()
+
     def list_checkpoints(self) -> List[str]:
         assert self._checkpoint_name_format is not None, "Cannot list checkpoints, no file name format specified"
 
