@@ -8,6 +8,7 @@ Currently, there is support for the most frequent data storing formats:
 import gzip
 import json
 import pickle
+from io import BytesIO
 from pathlib import Path
 from typing import Union, Tuple, Literal
 
@@ -15,6 +16,7 @@ import PIL.Image
 import cv2
 import imageio
 import numpy as np
+import requests
 import yaml
 from PIL import Image
 
@@ -270,6 +272,14 @@ def load_img(path: PathType) -> np.ndarray:
         img = Image.open(path)
 
     return np.asarray(img)
+
+
+def download_img(url: str) -> np.ndarray:
+    response = requests.get(url)
+    pil_img = Image.open(BytesIO(response.content))
+    img = np.asarray(pil_img)
+
+    return img
 
 
 InterpolationType = Literal['nearest', 'bilinear', 'bicubic', 'lanczos']
