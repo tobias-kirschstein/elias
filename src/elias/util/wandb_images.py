@@ -1,6 +1,7 @@
 import bisect
 import re
 from collections import OrderedDict
+from typing import Optional
 
 import cv2
 import numpy as np
@@ -15,6 +16,7 @@ def make_wandb_video(wandb_project: str,
                      output_folder: str,
                      /,
                      max_n_frames: int = 30,
+                     until_step: Optional[int] = None,
                      fps: int = 10):
     """
     Collects all images that were logged with a given key to a wandb run.
@@ -34,6 +36,8 @@ def make_wandb_video(wandb_project: str,
         max_n_frames:
             Sometimes, many images are logged to a run.
             To avoid excessive downloads, a maximum number of frames is specified
+        until_step:
+            If specified, only images until the given step will be downloaded
         fps:
             Playback speed of the generated video
     """
@@ -67,8 +71,11 @@ def make_wandb_video(wandb_project: str,
 
     # Select at most max_n_frames images
     logged_steps = list(image_files.keys())
+    if until_step is not None:
+        logged_steps = [step for step in logged_steps if step <= until_step]
     min_step = min(logged_steps)
     max_step = max(logged_steps)
+
     n_steps = len(logged_steps)
     if n_steps < max_n_frames:
         # Use all logged images
@@ -76,6 +83,11 @@ def make_wandb_video(wandb_project: str,
     else:
         # Use an equally spaced selection of images
         steps = np.linspace(min_step, max_step, max_n_frames)
+
+    # Performance improvement: In case n_steps < max_n_frames, we will use some frames multiple times
+    # We can avoid downloading them unnecessarily by caching the last image
+    previous_step = None
+    cached_image = None
 
     writer = None
     for step in tqdm(steps, desc="Downloading images"):
@@ -85,9 +97,14 @@ def make_wandb_video(wandb_project: str,
         closest_step = logged_steps[closest_step_idx]
 
         # Actually download artifact and parse into image
-        response = requests.get(file.url, auth=("api", api.api_key), stream=True, timeout=5)
-        image = Image.open(response.raw)
-        image_numpy = np.asarray(image)
+        if closest_step == previous_step and cached_image is not None:
+            image_numpy = cached_image
+        else:
+            response = requests.get(file.url, auth=("api", api.api_key), stream=True, timeout=5)
+            image = Image.open(response.raw)
+            image_numpy = np.asarray(image)
+            cached_image = image_numpy
+        previous_step = closest_step
 
         # Font-face:
         # 1 -> 20px
