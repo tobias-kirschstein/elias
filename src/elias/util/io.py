@@ -6,11 +6,19 @@ Currently, there is support for the most frequent data storing formats:
 """
 
 import gzip
+import io
 import json
 import pickle
 from io import BytesIO
 from pathlib import Path
-from typing import Union, Tuple, Literal
+from typing import Union, Tuple, Optional
+
+from matplotlib import pyplot as plt
+
+try:
+    from typing import Literal
+except ImportError:
+    from typing_extensions import Literal
 
 import PIL.Image
 import cv2
@@ -327,3 +335,23 @@ def resize_img(img: np.ndarray,
         img = np.array(img_pil)
 
     return img
+
+
+def fig2img(fig: Optional[plt.Figure] = None, transparent: bool = False) -> np.ndarray:
+    """
+    Converts a Matplotlib figure to a numpy image.
+    If no figure is given, the current open matplot figure will be used instead.
+    """
+
+    buf = io.BytesIO()
+    if fig is None:
+        fig = plt.gcf()
+
+    fig.savefig(buf, bbox_inches='tight', transparent=transparent)
+    buf.seek(0)
+    img = np.asarray(Image.open(buf))
+
+    if transparent:
+        return img[..., :4]
+    else:
+        return img[..., :3]
