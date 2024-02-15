@@ -223,6 +223,14 @@ class Config(ABC):
         """
         Allows coping with Configs that change over time by manually altering the `loaded_config` to adhere to the
         current version of the Config.
+        
+        It is recommended to put the super call
+         >>> super()._backward_compatibility(loaded_config)
+        at the end of the method. That way, first the outer config fixes its backward compatibility and then all
+        fields that are configs as well can further fix it on their side. A common scenario is that a field is
+        moved into a new config. Later, inside the config, the field might be renamed. 
+        The first backward compatibility (moving) is handled by the outer config, the second (renaming) by the inner.
+        It is important that the placement of the super call reflects this order. 
 
         Parameters
         ----------

@@ -102,7 +102,7 @@ def make_wandb_video(wandb_project: str,
         else:
             response = requests.get(file.url, auth=("api", api.api_key), stream=True, timeout=5)
             image = Image.open(response.raw)
-            image_numpy = np.asarray(image)
+            image_numpy = np.array(image)
             cached_image = image_numpy
         previous_step = closest_step
 
