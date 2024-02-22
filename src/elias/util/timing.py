@@ -97,6 +97,13 @@ class LoopTimer:
         self.start = now
         return measured_time
 
+    def start(self):
+        """
+        Set start time for next measurement to now.
+        """
+
+        self.start = time()
+
     def new_iteration(self):
         """
         Intended to be called at the beginning of a new iteration.
