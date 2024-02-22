@@ -1,8 +1,9 @@
 from collections import defaultdict
-from statistics import mean
+from statistics import mean, median
 from time import time
 from typing import Dict, Optional
 
+from numpy import std
 from tabulate import tabulate
 
 
@@ -56,7 +57,10 @@ class Timing:
 
 
 class LoopTimer:
-    def __init__(self, max_iterations: Optional[int] = None, print_at_last_iteration: bool = False):
+    def __init__(self,
+                 max_iterations: Optional[int] = None,
+                 warmup: int = 0,
+                 print_at_last_iteration: bool = False):
         """
         Utility to time repeated calculations in a loop and aggregate execution times.
 
@@ -64,6 +68,8 @@ class LoopTimer:
         ----------
         max_iterations:
             If set, only the first n iterations will be recorded
+        warmup:
+            Optionally, skip the first n iterations before timings will be recorded (Often loops are slower in the beginning until caching kicks in)
         print_at_last_iteration:
             If set, a timing summary will be printed automatically once new_iteration() is called for the first time after max_iterations has been reached
 
@@ -83,13 +89,14 @@ class LoopTimer:
         self.start = time()
         self.times = defaultdict(list)
 
-        self._max_iterations = max_iterations
+        self._start_iteration = warmup
+        self._end_iteration = max_iterations + warmup if max_iterations is not None else None
         self._current_iteration = 0
         self._print_at_last_iteration = print_at_last_iteration
 
     def measure(self, name: str) -> Optional[float]:
         now = time()
-        if self._max_iterations is None or self._current_iteration < self._max_iterations:
+        if self._start_iteration < self._current_iteration and (self._end_iteration is None or self._current_iteration < self._end_iteration):
             measured_time = now - self.start
             self.times[name].append(measured_time)
         else:
@@ -112,7 +119,7 @@ class LoopTimer:
         self.start = time()
         self._current_iteration += 1
 
-        if self._max_iterations is not None and self._current_iteration == self._max_iterations:
+        if self._end_iteration is not None and self._current_iteration == self._end_iteration:
             self.print_summary()
 
     def summary(self) -> Dict[str, float]:
@@ -123,10 +130,11 @@ class LoopTimer:
         print("===========================")
         print("Timing Summary")
         print("===========================")
-        summary = self.summary()
+        summary = {name: [mean(times), median(times), std(times)] for name, times in self.times.items()}
+        sorted_summary = sorted(summary.items(), key=lambda x: x[1], reverse=True)
         rows = []
-        for name, avg_time in summary.items():
-            row = [name, f"{avg_time*1000:.3f}ms"]
+        for name, (mean_time, median_time, std_time) in sorted_summary:
+            row = [name, f"{median_time*1000:.3f}ms", f"{mean_time*1000:.3f}ms ± {std_time*1000:.3f}ms"]
             rows.append(row)
 
-        print(tabulate(rows))
+        print(tabulate(rows, headers=["section", "median", "mean+std"]))
