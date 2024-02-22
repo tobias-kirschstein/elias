@@ -3,8 +3,8 @@ from typing import Tuple
 import numpy as np
 import torch
 from dreifus.image import Img
-from face_parser.bounding_boxes.face_boxes_v2 import FaceBoxesV2
-from face_parser.landmark_detection.pipnet import PIPNet
+from visage.bounding_boxes.face_boxes_v2 import FaceBoxesV2
+from visage.landmark_detection.pipnet import PIPNet
 
 
 class KeypointEvaluator:
