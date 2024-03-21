@@ -395,7 +395,7 @@ class ModelManager(ABC,
     def load_evaluation_result(self, checkpoint_name_or_id: Union[str, int]) -> _EvaluationResultType:
         if isinstance(checkpoint_name_or_id, str) and self._evaluation_name_format is None:
             # Assume that given checkpoint name should be file name for evaluation
-            self._load_config(self._cls_evaluation_result, checkpoint_name_or_id)
+            return self._load_config(self._cls_evaluation_result, checkpoint_name_or_id)
         else:
             assert self._evaluation_name_format is not None, "Cannot load evaluation, no file name format specified"
 
