@@ -71,6 +71,9 @@ class RunFolder(Generic[_RunManagerType]):
     def get_run_name_by_id(self, run_id: int) -> Optional[str]:
         return self._folder.get_file_name_by_numbering(self._name_format, run_id)
 
+    def get_run_id_by_name(self, run_name: str) -> Optional[int]:
+        return self._folder.get_numbering_by_file_name(self._name_format, run_name)
+
     def substitute(self, run_id: int, name: Optional[str] = None) -> str:
         """
         Returns the run name in the correct format for this run folder.
