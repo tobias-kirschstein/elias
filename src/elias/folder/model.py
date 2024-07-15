@@ -15,7 +15,7 @@ class ModelFolder(RunFolder[_ModelManagerType]):
 
     def __init__(self, models_folder: str, prefix: str, localize_via_run_name: bool = False):
         self._prefix = prefix
-        super(ModelFolder, self).__init__(models_folder, f"{prefix}-$[-*]", localize_via_run_name=localize_via_run_name)
+        super(ModelFolder, self).__init__(models_folder, f"{prefix}-$[_*]", localize_via_run_name=localize_via_run_name)
 
     def get_prefix(self) -> str:
         return self._prefix

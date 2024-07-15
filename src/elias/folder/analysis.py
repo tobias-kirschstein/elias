@@ -11,7 +11,7 @@ class AnalysisFolder(RunFolder[_AnalysisType]):
 
     _cls_run_manager: Type[_AnalysisType]
 
-    def __init__(self, analysis_folder: str, name_format: str = '$-*', localize_via_run_name: bool = False):
+    def __init__(self, analysis_folder: str, name_format: str = '$_*', localize_via_run_name: bool = False):
         super(AnalysisFolder, self).__init__(analysis_folder, name_format, localize_via_run_name=localize_via_run_name)
 
     def open_analysis(self, analysis_name_or_id: Union[str, int]) -> _AnalysisType:
