@@ -258,6 +258,17 @@ def load_yaml(path: PathType, suffix: str = 'yaml') -> dict:
 # =========================================================================
 
 def save_img(img: np.ndarray, path: PathType):
+    """
+    Save the given numpy array as an 8-bit image. The image type is determined by the file extension.
+    `image` should be a np.uint8 array with shape [H, W, (C)] with C in {1, 3, 4} and values in range [0, 255]
+    If `image` has type np.float32, it is assumed that values are in range [0, 1]. The float image will be automatically converted to uint8 type.
+
+    Parameters
+    ----------
+        img: image as a [H, W, (C)] numpy array with values in [0, 255] or [0, 1].
+        path: where to store the image. Any necessarily folders will be created automatically.
+    """
+
     ensure_directory_exists_for_file(path)
 
     if Path(path).suffix == '.exr':
@@ -269,6 +280,10 @@ def save_img(img: np.ndarray, path: PathType):
             assert 0 <= img.min() and img.max() <= 1, \
                 "passed float array should have values between 0 and 1 to be interpreted as image"
             img = (img * 255).astype(np.uint8)
+
+        if img.shape[2] == 1:
+            # Assume this should be stored as a single-channel grayscale image
+            img = img[:, :, 0]
 
         Image.fromarray(img).save(path)
 
