@@ -281,7 +281,7 @@ def save_img(img: np.ndarray, path: PathType):
                 "passed float array should have values between 0 and 1 to be interpreted as image"
             img = (img * 255).astype(np.uint8)
 
-        if img.shape[2] == 1:
+        if len(img.shape) == 3 and img.shape[2] == 1:
             # Assume this should be stored as a single-channel grayscale image
             img = img[:, :, 0]
 
