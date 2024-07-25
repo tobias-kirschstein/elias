@@ -88,6 +88,7 @@ class LoopTimer:
         """
 
         self.start = time()
+        self.loop_start = None
         self.times = defaultdict(list)
 
         self._start_iteration = warmup
@@ -123,10 +124,27 @@ class LoopTimer:
 
         if not self._disable:
             self.start = time()
+
+            # Note down how long the whole iteration took
+            if (self.loop_start is not None
+                    and self._start_iteration < self._current_iteration
+                    and (self._end_iteration is None or self._current_iteration < self._end_iteration)):
+                measured_loop_time = self.start - self.loop_start
+                self.times["loop iteration"].append(measured_loop_time)
+
+            self.loop_start = self.start
             self._current_iteration += 1
 
             if self._end_iteration is not None and self._current_iteration == self._end_iteration:
                 self.print_summary()
+
+    def get_iteration_time(self) -> float:
+        """
+        Returns
+        -------
+            the duration of the current loop iteration since new_iteration() in seconds
+        """
+        return time() - self.loop_start
 
     def summary(self) -> Dict[str, float]:
         if self._disable:
