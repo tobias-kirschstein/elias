@@ -60,7 +60,8 @@ class LoopTimer:
     def __init__(self,
                  max_iterations: Optional[int] = None,
                  warmup: int = 0,
-                 print_at_last_iteration: bool = False):
+                 print_at_last_iteration: bool = False,
+                 disable: bool = False):
         """
         Utility to time repeated calculations in a loop and aggregate execution times.
 
@@ -93,8 +94,12 @@ class LoopTimer:
         self._end_iteration = max_iterations + warmup if max_iterations is not None else None
         self._current_iteration = 0
         self._print_at_last_iteration = print_at_last_iteration
+        self._disable = disable
 
     def measure(self, name: str) -> Optional[float]:
+        if self._disable:
+            return None
+
         now = time()
         if self._start_iteration < self._current_iteration and (self._end_iteration is None or self._current_iteration < self._end_iteration):
             measured_time = now - self.start
@@ -108,33 +113,38 @@ class LoopTimer:
         """
         Set start time for next measurement to now.
         """
-
-        self.start = time()
+        if not self._disable:
+            self.start = time()
 
     def new_iteration(self):
         """
         Intended to be called at the beginning of a new iteration.
         """
 
-        self.start = time()
-        self._current_iteration += 1
+        if not self._disable:
+            self.start = time()
+            self._current_iteration += 1
 
-        if self._end_iteration is not None and self._current_iteration == self._end_iteration:
-            self.print_summary()
+            if self._end_iteration is not None and self._current_iteration == self._end_iteration:
+                self.print_summary()
 
     def summary(self) -> Dict[str, float]:
+        if self._disable:
+            return dict()
+
         summary = {name: mean(times) for name, times in self.times.items()}
         return summary
 
     def print_summary(self):
-        print("===========================")
-        print("Timing Summary")
-        print("===========================")
-        summary = {name: [mean(times), median(times), std(times)] for name, times in self.times.items()}
-        sorted_summary = sorted(summary.items(), key=lambda x: x[1], reverse=True)
-        rows = []
-        for name, (mean_time, median_time, std_time) in sorted_summary:
-            row = [name, f"{median_time*1000:.3f}ms", f"{mean_time*1000:.3f}ms ± {std_time*1000:.3f}ms"]
-            rows.append(row)
+        if not self._disable:
+            print("===========================")
+            print("Timing Summary")
+            print("===========================")
+            summary = {name: [mean(times), median(times), std(times)] for name, times in self.times.items()}
+            sorted_summary = sorted(summary.items(), key=lambda x: x[1], reverse=True)
+            rows = []
+            for name, (mean_time, median_time, std_time) in sorted_summary:
+                row = [name, f"{median_time*1000:.3f}ms", f"{mean_time*1000:.3f}ms ± {std_time*1000:.3f}ms"]
+                rows.append(row)
 
-        print(tabulate(rows, headers=["section", "median", "mean+std"]))
+            print(tabulate(rows, headers=["section", "median", "mean+std"]))
