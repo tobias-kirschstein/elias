@@ -114,6 +114,11 @@ def make_wandb_video(wandb_project: str,
         text = f"{closest_step}"
         cv2.putText(image_numpy, text, (10, image_numpy.shape[0] - 10), 0, font_face, (0, 255, 0))
 
+        # Many mp4 player want an even number of pixels for width and height
+        H_even = 2 * int(image_numpy.shape[0] / 2)
+        W_even = 2 * int(image_numpy.shape[1] / 2)
+        image_numpy = image_numpy[:H_even, :W_even]
+
         # Fuse image into video and stream to disk
         if writer is None:
             render_width = int(image_numpy.shape[1])
