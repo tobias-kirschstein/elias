@@ -22,7 +22,7 @@ class TimeMeasurer:
 
     def print_measure(self, text: str):
         passed_time = self.measure()
-        print(f"{text}: {passed_time:.2f}ms")
+        print(f"{text}: {passed_time*1000:.2f}ms")
 
     def __len__(self) -> int:
         return len(self.times)
