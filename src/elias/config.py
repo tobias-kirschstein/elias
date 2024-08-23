@@ -539,3 +539,31 @@ def implicit(default: Any = None):
     """
 
     return field(init=False, default=default)
+
+
+def better_replace(config, **kwargs) -> object:
+    """
+    Improvement of the dataclass replace() function to copy a dataclass while simultaneously changing the fields
+    passed as **kwargs.
+    The default replace() function ignores fields with init=False (such as those created by implicit()).
+    This function explicitly copies init=False fields to the new dataclass.
+
+    Parameters
+    ----------
+        config:
+            The dataclass to copy
+        kwargs:
+            Optional changes that should be made to the dataclass
+
+    Returns
+    -------
+        A new dataclass with the specified fields replaced
+    """
+
+    new_config = replace(config, **kwargs)
+    for f in fields(config):
+        if not f.init:
+            field_value = getattr(config, f.name)
+            setattr(new_config, f.name, field_value)
+
+    return new_config
