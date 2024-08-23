@@ -541,7 +541,7 @@ def implicit(default: Any = None):
     return field(init=False, default=default)
 
 
-def better_replace(config, **kwargs) -> object:
+def better_replace(config, **kwargs):
     """
     Improvement of the dataclass replace() function to copy a dataclass while simultaneously changing the fields
     passed as **kwargs.
