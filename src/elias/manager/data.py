@@ -3,7 +3,6 @@ import warnings
 from abc import abstractmethod, ABC
 from typing import Iterable, TypeVar, Generic, List, Generator, Iterator, Type, Union, Any
 
-from numpy import deprecate
 from silberstral import reveal_type_var
 
 from elias.config import Config
@@ -117,13 +116,11 @@ class BaseDataManager(Generic[_SampleType, _ConfigType, _StatisticsType], Artifa
         return data_manager
 
     @staticmethod
-    @deprecate
     def to_batches(generator: Iterable[_T], batch_size: int, lazy: bool = False) -> Generator[List[_T], None, None]:
         warnings.warn('This function is deprecated. Use elias.util.batch.batchify() instead', DeprecationWarning)
         return batchify(generator, batch_size, lazy=lazy)
 
     @staticmethod
-    @deprecate
     def batchify_tensor(tensor, batch_size: int) -> Iterator:
         warnings.warn('This function is deprecated. Use elias.util.batch.batchify_slice() instead', DeprecationWarning)
         return batchify_sliced(tensor, batch_size)
