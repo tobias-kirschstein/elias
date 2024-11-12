@@ -332,7 +332,8 @@ def resize_img(img: np.ndarray,
         else:
             raise ValueError(f"Invalid interpolation type: {interpolation}")
 
-        img = cv2.resize(img, (int(img.shape[1] * scale_x), int(img.shape[0] * scale_y)), interpolation=interpolation)
+        # NB: Python's round() does round-to-even! Regular round can be implemented by int(x + 0.5)
+        img = cv2.resize(img, (int(img.shape[1] * scale_x + 0.5), int(img.shape[0] * scale_y + 0.5)), interpolation=interpolation)
     else:
         if interpolation == 'nearest':
             interpolation = PIL.Image.Resampling.NEAREST
@@ -346,7 +347,8 @@ def resize_img(img: np.ndarray,
             raise ValueError(f"Invalid interpolation type: {interpolation}")
 
         img_pil = Image.fromarray(img)
-        img_pil = img_pil.resize((int(img.shape[1] * scale_x), int(img.shape[0] * scale_y)), resample=interpolation)
+        # NB: Python's round() does round-to-even! Regular round can be implemented by int(x + 0.5)
+        img_pil = img_pil.resize((int(img.shape[1] * scale_x + 0.5), int(img.shape[0] * scale_y + 0.5)), resample=interpolation)
         img = np.array(img_pil)
 
     return img
