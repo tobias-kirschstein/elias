@@ -258,7 +258,7 @@ def load_yaml(path: PathType, suffix: str = 'yaml') -> dict:
 # Images
 # =========================================================================
 
-def save_img(img: np.ndarray, path: PathType):
+def save_img(img: np.ndarray, path: PathType, quality: Optional[int] = None):
     """
     Save the given numpy array as an 8-bit image. The image type is determined by the file extension.
     `image` should be a np.uint8 array with shape [H, W, (C)] with C in {1, 3, 4} and values in range [0, 255]
@@ -268,6 +268,7 @@ def save_img(img: np.ndarray, path: PathType):
     ----------
         img: image as a [H, W, (C)] numpy array with values in [0, 255] or [0, 1].
         path: where to store the image. Any necessarily folders will be created automatically.
+        quality: quality for JPEG compression. Default takes the default compression level from pillow (75)
     """
 
     ensure_directory_exists_for_file(path)
@@ -286,7 +287,10 @@ def save_img(img: np.ndarray, path: PathType):
             # Assume this should be stored as a single-channel grayscale image
             img = img[:, :, 0]
 
-        Image.fromarray(img).save(path)
+        if quality is None:
+            Image.fromarray(img).save(path)
+        else:
+            Image.fromarray(img).save(path, quality=quality)
 
 
 def load_img(path: PathType) -> np.ndarray:
