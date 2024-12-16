@@ -21,6 +21,7 @@ except ImportError:
     from typing_extensions import Literal
 
 import PIL.Image
+import pillow_avif  # IMPORTANT: This import must be here, otherwise .avif files won't be loaded with "PIL.UnidentifiedImageError: cannot identify image file"
 import cv2
 import imageio
 import numpy as np
