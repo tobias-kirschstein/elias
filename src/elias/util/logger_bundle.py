@@ -3,7 +3,11 @@ from statistics import mean
 from typing import List, Union, Dict, Any, Optional
 
 import numpy as np
-import torch
+
+try:
+    import torch
+except ImportError:
+    print("torch not installed")
 
 
 class LoggerBundle:
