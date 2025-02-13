@@ -8,10 +8,13 @@ Currently, there is support for the most frequent data storing formats:
 import gzip
 import io
 import json
+import os
 import pickle
+import urllib
 from io import BytesIO
 from pathlib import Path
 from typing import Union, Tuple, Optional
+from urllib.error import HTTPError, URLError
 
 from matplotlib import pyplot as plt
 
@@ -377,3 +380,27 @@ def fig2img(fig: Optional[plt.Figure] = None, transparent: bool = False) -> np.n
         return img[..., :4]
     else:
         return img[..., :3]
+
+
+def download_file(url: str, target_path: str) -> None:
+    ensure_directory_exists_for_file(target_path)
+
+    if Path(target_path).exists():
+        response = requests.head(url)
+        download_size = int(response.headers['content-length'])
+        local_file_size = os.path.getsize(target_path)
+
+        if download_size == local_file_size:
+            print(f"{target_path} already exists, skipping")
+            return
+        else:
+            print(f"{target_path} seems to be incomplete. Re-downloading...")
+
+    print(f"Downloading file from {url} to {target_path}")
+
+    try:
+        urllib.request.urlretrieve(url, target_path)
+    except HTTPError as e:
+        print(f"HTTP error occurred reaching {url}: {e}")
+    except URLError as e:
+        print(f"URL error occurred reaching {url}: {e}")
