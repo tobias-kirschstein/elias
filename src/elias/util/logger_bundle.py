@@ -69,7 +69,7 @@ class LoggerBundle:
             from pytorch_lightning.loggers import Logger, WandbLogger, TensorBoardLogger
             for logger in self._loggers:
                 if isinstance(logger, WandbLogger):
-                    logger.experiment.log(metrics_to_log, step=self._current_step, commit=True)
+                    logger.experiment.log(metrics_to_log, step=self._current_step, commit=False)  # commit=False is necessary, otherwise internal step is automatically increased by wandb and one gets warnings about not able to log to previous step
                 else:
                     logger.log_metrics(metrics_to_log, step=self._current_step)
 
